@@ -162,6 +162,26 @@ def create_entry(entry: EntryCreate):
     db.refresh(db_entry)
     return db_entry
 
+@app.put("/entries/{entry_id}", response_model=EntryResponse, dependencies=[Depends(verify_token)])
+def update_entry(entry_id: int, entry: EntryCreate):
+    db = SessionLocal()
+    db_entry = db.query(Entry).filter(Entry.id == entry_id).first()
+    if not db_entry:
+        raise HTTPException(status_code=404, detail="Entry not found")
+    
+    db_entry.title = entry.title
+    db_entry.content = entry.content
+    db_entry.folder = entry.folder
+    db_entry.mood = entry.mood
+    # Update habits (replace existing)
+    if entry.completed_habit_ids is not None:
+         habits = db.query(Habit).filter(Habit.id.in_(entry.completed_habit_ids)).all()
+         db_entry.completed_habits = habits
+         
+    db.commit()
+    db.refresh(db_entry)
+    return db_entry
+
 @app.get("/entries/", response_model=List[EntryResponse], dependencies=[Depends(verify_token)])
 def read_entries():
     db = SessionLocal()

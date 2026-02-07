@@ -353,3 +353,22 @@ textarea::placeholder {
     opacity: 1;
   }
 }
+
+/* Life OS: Zen Mode */
+.zen-mode .top-bar-container,
+.zen-mode .mood-selector-container,
+.zen-mode .helper-buttons-container {
+  opacity: 0.1;
+  filter: blur(2px);
+  transition: all 0.8s ease-out;
+  pointer-events: none;
+}
+
+.zen-mode:hover .top-bar-container,
+.zen-mode:hover .mood-selector-container,
+.zen-mode:hover .helper-buttons-container {
+  opacity: 1;
+  filter: blur(0);
+  transition: all 0.3s ease-in;
+  pointer-events: auto;
+}

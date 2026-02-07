@@ -312,38 +312,66 @@ const JournalView = ({ entries, folders, entryToEdit, activeFolder: initialActiv
         }
     };
 
-    const handleSaveEntry = async () => {
-        if (!content) return;
+    // Autosave Timer ref
+    const autosaveTimerRef = useRef(null);
 
-        setSaveStatus('analyzing');
-        setIsAnalyzing(true);
-        let dynamicPrompt = "What is one thing you learned today?";
-        try {
-            dynamicPrompt = await analyzeEntry(content);
-        } catch (e) { console.error(e); }
-        setReflectionPrompt(dynamicPrompt);
-        setIsAnalyzing(false);
+    // Contextual Save (Create or Update)
+    const saveEntry = async (silent = true) => {
+        if (!content && !title) return;
 
-        setSaveStatus('saving');
+        if (!silent) setIsAnalyzing(true);
+        if (!silent) setSaveStatus('saving');
+        // Silent save doesn't change status to 'saving' visibly unless we want a small indicator
+
         const finalContent = tags ? `${content}\n\n[Tags: ${tags}]` : content;
-
-        await axios.post(`${API_URL}/entries/`, {
+        const entryPayload = {
             title: title || 'Untitled',
             content: finalContent,
-            folder: currentFolder, // Use the selected folder from Dropdown
+            folder: currentFolder,
             mood: selectedMood,
-            completed_habit_ids: completedHabitIds // Send IDs
-        });
+            completed_habit_ids: completedHabitIds
+        };
 
-        setSaveStatus('saved');
-        setShowGrowthAnim(true);
-        onRefresh();
+        try {
+            if (id) {
+                await axios.put(`${API_URL}/entries/${id}`, entryPayload);
+            } else {
+                const res = await axios.post(`${API_URL}/entries/`, entryPayload);
+                setId(res.data.id); // Switch to Update mode
+            }
 
-        setTimeout(() => {
-            setSaveStatus('idle');
-            setIsReflecting(true);
-        }, 1200);
+            if (!silent) {
+                setShowGrowthAnim(true);
+            }
+            setSaveStatus('saved');
+            onRefresh();
+
+            if (!silent) {
+                setTimeout(() => {
+                    setSaveStatus('idle');
+                    setIsReflecting(true);
+                }, 1200);
+            } else {
+                // Clear 'saved' after 2s for cleaner UI
+                setTimeout(() => setSaveStatus('idle'), 2000);
+            }
+        } catch (e) { console.error(e); setSaveStatus('error'); }
     };
+
+    // Autosave Effect
+    useEffect(() => {
+        if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
+        if (content || title) {
+            setSaveStatus('saving-quiet'); // subtle indicator
+            autosaveTimerRef.current = setTimeout(() => {
+                saveEntry(true);
+            }, 2000); // 2s debounce
+        }
+        return () => clearTimeout(autosaveTimerRef.current);
+    }, [content, title, selectedMood, tags, currentFolder]);
+
+    // Manual Trigger (for "Done" button if we add one)
+    const handleSaveEntry = () => saveEntry(false);
 
     const handleFinishReflection = async () => {
         setIsReflecting(false);
@@ -496,7 +524,7 @@ const JournalView = ({ entries, folders, entryToEdit, activeFolder: initialActiv
             </div>
 
             {/* --- RIGHT COLUMN: EDITOR --- */}
-            <div className="app-container"
+            <div className={`app-container ${isTyping || isEditorFocused ? 'zen-mode' : ''}`}
                 style={{ flex: 1, margin: '0 20px', display: 'flex', flexDirection: 'column', height: '100%', minWidth: '400px' }}>
 
                 {/* Growth Animation Overlay */}
@@ -507,7 +535,7 @@ const JournalView = ({ entries, folders, entryToEdit, activeFolder: initialActiv
                 )}
 
                 {/* Top Bar: Breadcrumbs & Navigation */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px', color: 'var(--muted-text)', fontSize: '13px', alignItems: 'center' }}>
+                <div className="top-bar-container" style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px', color: 'var(--muted-text)', fontSize: '13px', alignItems: 'center', transition: 'opacity 0.5s' }}>
 
                     {/* Quick-File Pill */}
                     <div style={{ position: 'relative' }}>
@@ -584,7 +612,7 @@ const JournalView = ({ entries, folders, entryToEdit, activeFolder: initialActiv
                 </div>
 
                 {/* Mood Selector - Animated */}
-                <div style={{ marginBottom: '20px', textAlign: 'center' }}>
+                <div className="mood-selector-container" style={{ marginBottom: '20px', textAlign: 'center', transition: 'opacity 0.5s' }}>
                     <div style={{ display: 'inline-flex', gap: '10px', background: 'var(--glass-bg)', padding: '10px 20px', borderRadius: '30px', backdropFilter: 'blur(10px)', border: '1px solid var(--glass-border)' }}>
                         {moods.map(m => (
                             <button key={m.value}
@@ -607,7 +635,7 @@ const JournalView = ({ entries, folders, entryToEdit, activeFolder: initialActiv
 
                 {/* Writing Helpers */}
                 {showHelper && (
-                    <div className="helper-reveal" style={{ display: 'flex', gap: '10px', marginBottom: '15px', justifyContent: 'center' }}>
+                    <div className="helper-reveal helper-buttons-container" style={{ display: 'flex', gap: '10px', marginBottom: '15px', justifyContent: 'center', transition: 'opacity 0.5s' }}>
                         <button onClick={() => openOverlay('reflect')} style={helperStyle}>🤔 Deep Dive</button>
                         <button onClick={() => openOverlay('vent')} style={helperStyle}>😤 Clear Mind</button>
                         <button onClick={() => openOverlay('gratitude')} style={helperStyle}>🙏 Give Thanks</button>
@@ -730,20 +758,16 @@ const JournalView = ({ entries, folders, entryToEdit, activeFolder: initialActiv
                             </div>
                         )}
                     </div>
-                    <button onClick={handleSaveEntry}
-                        className={`save-btn ${saveStatus === 'saved' ? 'saved' : ''}`}
-                        disabled={saveStatus !== 'idle'}
-                        style={{ background: 'var(--accent-primary)', color: 'var(--bg-primary)', border: 'none', padding: '10px 25px', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 'bold', boxShadow: 'var(--card-shadow)' }}>
-
-                        {saveStatus === 'analyzing' && <Wand2 className="spin" size={18} />}
-                        {saveStatus === 'saving' && <Save size={18} />}
-                        {saveStatus === 'saved' && <CheckCircle size={18} />}
-                        {saveStatus === 'idle' && <Save size={18} />}
-
-                        {saveStatus === 'analyzing' ? 'Thinking...' : (
-                            saveStatus === 'saved' ? 'Saved!' : (saveStatus === 'saving' ? 'Saving...' : 'Save Entry')
-                        )}
-                    </button>
+                    {/* Autosave Indicator */}
+                    <div style={{
+                        background: 'var(--bg-primary)', padding: '6px 12px', borderRadius: '20px',
+                        border: '1px solid var(--border-color)', fontSize: '11px', color: 'var(--muted-text)',
+                        display: 'flex', alignItems: 'center', gap: '6px',
+                        opacity: saveStatus === 'idle' ? 0 : 1, transition: 'opacity 0.5s'
+                    }}>
+                        {saveStatus === 'saved' ? <CheckCircle size={12} color="var(--accent-primary)" /> : <Clock size={12} />}
+                        {saveStatus === 'saved' ? 'Saved' : 'Saving...'}
+                    </div>
                 </div>
 
                 {/* Reflection Overlay */}
