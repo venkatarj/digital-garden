@@ -255,6 +255,23 @@ textarea::placeholder {
   border-color: var(--accent-sage-light) !important;
 }
 
+/* Life OS: Floating Hint */
+.fail-safe-hint {
+  animation: floatHint 2s infinite ease-in-out;
+}
+
+@keyframes floatHint {
+
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+
+  50% {
+    transform: translateY(-5px);
+  }
+}
+
 /* --- RESIZERS --- */
 .resizer {
   width: 5px;

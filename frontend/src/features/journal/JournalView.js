@@ -35,6 +35,7 @@ const JournalView = ({ entries, folders, entryToEdit, activeFolder: initialActiv
 
     const [selectedMood, setSelectedMood] = useState('😐');
     const [previewMood, setPreviewMood] = useState(null); // New: For hover preview
+    const [activeHint, setActiveHint] = useState(null); // New: Smart tag hint
     const [tags, setTags] = useState('');
     const [currentFolder, setCurrentFolder] = useState(initialActiveFolder || 'Journal'); // Local folder state for Pill
 
@@ -249,6 +250,18 @@ const JournalView = ({ entries, folders, entryToEdit, activeFolder: initialActiv
             }
         });
         setSuggestedTags(newSuggestions);
+
+        // Life OS: Smart Floating Hint Logic (Last Word)
+        const lastWord = lowerContent.split(/[\s\n]+/).pop()?.replace(/[^a-z0-9]/g, '');
+        const relevantTag = lastWord ? Object.keys(KEYWORDS).find(tag =>
+            KEYWORDS[tag].includes(lastWord) && !tags.includes(tag)
+        ) : null;
+
+        if (relevantTag) {
+            setActiveHint(relevantTag);
+            // Clear hint after 5s if not clicked
+            setTimeout(() => setActiveHint(null), 5000);
+        }
     }, [content, tags]);
 
     // --- ACTIONS ---
@@ -578,7 +591,27 @@ const JournalView = ({ entries, folders, entryToEdit, activeFolder: initialActiv
                 </div>
 
                 {/* Editor Card Container */}
-                <div className={`editor-card ${isEditorFocused ? 'focused' : ''}`} style={{ boxShadow: isEditorFocused ? 'var(--card-shadow)' : 'none', border: isEditorFocused ? '1px solid var(--border-color)' : '1px solid transparent' }}>
+                <div className={`editor-card ${isEditorFocused ? 'focused' : ''}`} style={{ boxShadow: isEditorFocused ? 'var(--card-shadow)' : 'none', border: isEditorFocused ? '1px solid var(--border-color)' : '1px solid transparent', position: 'relative' }}>
+                    {/* Life OS: Smart Floating Hint */}
+                    {activeHint && (
+                        <div className="fail-safe-hint fade-in-up"
+                            onClick={() => {
+                                setTags(prev => prev ? `${prev}, ${activeHint}` : activeHint);
+                                setActiveHint(null);
+                            }}
+                            style={{
+                                position: 'absolute', bottom: '20px', right: '20px',
+                                background: 'var(--bg-primary)',
+                                border: '1px solid var(--accent-primary)',
+                                padding: '8px 16px', borderRadius: '20px',
+                                color: 'var(--accent-primary)', fontSize: '12px', fontWeight: 'bold',
+                                boxShadow: '0 4px 15px rgba(0,0,0,0.1)', cursor: 'pointer',
+                                zIndex: 50, display: 'flex', alignItems: 'center', gap: '6px'
+                            }}>
+                            <Sparkles size={12} /> Add #{activeHint}
+                        </div>
+                    )}
+
                     {/* Editor - Ghost Text & Focus */}
                     <div className="ghost-input-container" style={{ marginBottom: '15px' }}>
                         <input
