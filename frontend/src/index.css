@@ -1,0 +1,231 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
+:root {
+  /* LIGHT MODE (Default) */
+  --bg-primary: #FFFFFF;
+  --bg-secondary: #F7F7F7;
+  --contrast-text: #000000;
+  --muted-text: #666666;
+
+  --accent-primary: #FF6B00;
+  /* Requested Orange */
+  --accent-secondary: #FFF0E0;
+  /* Light Orange */
+
+  --nothing-red: #D71921;
+  /* Keep Red for specific Nothing elements */
+
+  --border-color: #E5E5E5;
+  --glass-bg: rgba(255, 255, 255, 0.6);
+  --glass-border: rgba(0, 0, 0, 0.05);
+
+  --font-mono: 'IBM Plex Mono', monospace;
+  --font-sans: 'Inter', sans-serif;
+
+  --card-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+  --transition-speed: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+[data-theme='dark'] {
+  /* DARK MODE - Optimized */
+  --bg-primary: #0A0A0A;
+  /* Richer OLED-like black */
+  --bg-secondary: #161616;
+  /* Slight separation for sidebars */
+  --contrast-text: #EDEDED;
+  /* Softer than pure white */
+  --muted-text: #888888;
+
+  --accent-primary: #FF6B00;
+  --accent-secondary: #331400;
+
+  --border-color: #262626;
+  /* Subtle dark borders */
+  --glass-bg: rgba(20, 20, 20, 0.6);
+  /* Dark Glass */
+  --glass-border: rgba(255, 255, 255, 0.08);
+
+  --card-shadow: 0 4px 20px -1px rgba(0, 0, 0, 0.8);
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  background-color: var(--bg-primary);
+  color: var(--contrast-text);
+  -webkit-font-smoothing: antialiased;
+  transition: background-color var(--transition-speed), color var(--transition-speed);
+}
+
+/* --- ANIMATIONS --- */
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(15px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes scaleFadeIn {
+  from {
+    transform: scale(0.95);
+    opacity: 0;
+  }
+
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes organicGrow {
+  0% {
+    transform: scale(0) rotate(-10deg);
+    opacity: 0;
+  }
+
+  50% {
+    opacity: 1;
+  }
+
+  100% {
+    transform: scale(1.2) rotate(5deg);
+    opacity: 0;
+  }
+}
+
+/* --- COMPONENT CLASSES --- */
+
+.app-container {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Editor Card - The Core "Brightening" Effect */
+.editor-card {
+  background: var(--glass-bg);
+  /* Use variable for auto-switching */
+  border-radius: 20px;
+  padding: 40px;
+  /* Generous whitespace */
+  transition: all 0.4s var(--easing-smooth);
+  border: 1px solid var(--glass-border);
+}
+
+/* When focused, it becomes pure color and lifts slightly */
+.editor-card.focused {
+  background: var(--bg-primary);
+  box-shadow: var(--card-shadow);
+  border-color: var(--accent-primary);
+  transform: translateY(-2px);
+}
+
+/* Mood Buttons */
+.mood-btn {
+  transition: transform 0.3s var(--easing-smooth), opacity 0.3s ease;
+  opacity: 0.5;
+  filter: grayscale(0.2);
+}
+
+.mood-btn:hover {
+  transform: scale(1.1) !important;
+  opacity: 0.8;
+}
+
+.mood-selected {
+  transform: scale(1.25) !important;
+  opacity: 1 !important;
+  filter: grayscale(0);
+}
+
+.mood-ring {
+  /* Optional ring effect could go here if needed */
+}
+
+/* Save Button */
+.save-btn {
+  background-color: var(--accent-sage) !important;
+  transition: transform 0.2s var(--easing-smooth), background-color 0.3s ease;
+  font-weight: 500;
+  letter-spacing: 0.5px;
+}
+
+.save-btn:active {
+  transform: scale(0.96);
+}
+
+.save-btn.saved {
+  background-color: #48BB78 !important;
+}
+
+/* Ghost Text & Typography */
+.ghost-text {
+  color: #CBD5E0;
+  font-weight: 600;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: #A0AEC0;
+  opacity: 1;
+}
+
+/* Growth Overlay */
+.growth-overlay {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  z-index: 9999;
+}
+
+.growth-icon {
+  color: var(--accent-sage);
+  animation: organicGrow 1.5s var(--easing-smooth) forwards;
+}
+
+/* Utilities */
+.fade-in-up {
+  animation: fadeInUp 0.6s var(--easing-smooth) forwards;
+}
+
+.tag-pill {
+  animation: scaleFadeIn 0.3s var(--easing-smooth);
+  border-color: var(--accent-sage-light) !important;
+}
+
+/* --- RESIZERS --- */
+.resizer {
+  width: 5px;
+  cursor: col-resize;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 10;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.resizer-line {
+  width: 1px;
+  height: 100%;
+  background: var(--border-color);
+  opacity: 0.5;
+  transition: all 0.2s;
+}
+
+.resizer:hover .resizer-line,
+.resizer:active .resizer-line {
+  background: var(--accent-primary);
+  width: 2px;
+  opacity: 1;
+  box-shadow: 0 0 8px var(--accent-primary);
+}
