@@ -7,12 +7,34 @@ import {
 } from 'lucide-react';
 import { analyzeEntry } from '../../ai/SemanticEngine';
 
+// Helper: Animate numbers
+const CountUp = ({ end, duration = 1000 }) => {
+    const [count, setCount] = useState(0);
+    useEffect(() => {
+        let start = 0;
+        const increment = end / (duration / 16);
+        const timer = setInterval(() => {
+            start += increment;
+            if (start >= end) {
+                setCount(end);
+                clearInterval(timer);
+            } else {
+                setCount(Math.ceil(start));
+            }
+        }, 16);
+        return () => clearInterval(timer);
+    }, [end, duration]);
+    return <span>{count}</span>;
+};
+
 const JournalView = ({ entries, folders, entryToEdit, activeFolder: initialActiveFolder, isPrivate, setIsPrivate, onRefresh, setAppBackground }) => {
     // Editor State
     const [id, setId] = useState(null);
     const [title, setTitle] = useState('');
     const [content, setContent] = useState('');
+
     const [selectedMood, setSelectedMood] = useState('😐');
+    const [previewMood, setPreviewMood] = useState(null); // New: For hover preview
     const [tags, setTags] = useState('');
     const [currentFolder, setCurrentFolder] = useState(initialActiveFolder || 'Journal'); // Local folder state for Pill
 
@@ -29,6 +51,8 @@ const JournalView = ({ entries, folders, entryToEdit, activeFolder: initialActiv
 
     // Animation/UI State
     const [isEditorFocused, setIsEditorFocused] = useState(false);
+    const [isTyping, setIsTyping] = useState(false);
+    const [isThoughtSettled, setIsThoughtSettled] = useState(true);
     const [saveStatus, setSaveStatus] = useState('idle');
     const [showGrowthAnim, setShowGrowthAnim] = useState(false);
     const [ghostTitle, setGhostTitle] = useState('');
@@ -178,12 +202,22 @@ const JournalView = ({ entries, folders, entryToEdit, activeFolder: initialActiv
         }
     };
 
-    // "Need help?" reveal
+    // Life OS: "Thought Settling" Engine
     useEffect(() => {
-        if (content.length > 0 && isEditorFocused) {
+        if (isEditorFocused) {
+            setIsTyping(true);
+            setIsThoughtSettled(false);
             if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-            typingTimeoutRef.current = setTimeout(() => setShowHelper(true), 5000);
+
+            // The "Settling" Phase
+            typingTimeoutRef.current = setTimeout(() => {
+                setIsTyping(false);
+                setIsThoughtSettled(true); // Thoughts have settled
+                setShowHelper(true);
+            }, 2000); // 2 seconds of silence = settled thought
         } else {
+            setIsTyping(false);
+            setIsThoughtSettled(true);
             setShowHelper(false);
         }
         return () => clearTimeout(typingTimeoutRef.current);
@@ -339,10 +373,15 @@ const JournalView = ({ entries, folders, entryToEdit, activeFolder: initialActiv
 
     // --- RENDER ---
     return (
-        <div style={{ display: 'flex', height: '100%', gap: '0' }}>
+        <div className={`journal-view-container ${isEditorFocused ? 'focus-mode' : ''} ${isThoughtSettled ? 'thought-settled' : ''}`}
+            style={{
+                display: 'flex', height: '100%', gap: '0',
+                '--active-mood-color': moodThemes[previewMood || selectedMood] || 'transparent'
+            }}>
 
             {/* --- MIDDLE COLUMN: ACCORDION SIDEBAR --- */}
-            <div style={{ width: `${middleWidth}px`, borderRight: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', paddingRight: '10px', overflowY: 'auto', flexShrink: 0 }}>
+            <div className="sidebar-transition sidebar-left"
+                style={{ width: `${middleWidth}px`, borderRight: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', paddingRight: '10px', overflowY: 'auto', flexShrink: 0 }}>
 
                 {/* Search */}
                 <div style={{ position: 'relative', marginBottom: '15px' }}>
@@ -508,11 +547,17 @@ const JournalView = ({ entries, folders, entryToEdit, activeFolder: initialActiv
                 <div style={{ marginBottom: '20px', textAlign: 'center' }}>
                     <div style={{ display: 'inline-flex', gap: '10px', background: 'var(--glass-bg)', padding: '10px 20px', borderRadius: '30px', backdropFilter: 'blur(10px)', border: '1px solid var(--glass-border)' }}>
                         {moods.map(m => (
-                            <button key={m.value} onClick={() => setSelectedMood(m.value)} title={m.label}
+                            <button key={m.value}
+                                onClick={() => { setSelectedMood(m.value); setPreviewMood(null); }}
+                                onMouseEnter={() => setPreviewMood(m.value)}
+                                onMouseLeave={() => setPreviewMood(null)}
+                                title={m.label}
                                 className={`mood-btn ${selectedMood === m.value ? 'mood-selected' : ''}`}
                                 style={{
                                     padding: '12px', borderRadius: '50%', border: 'none', background: 'transparent',
-                                    cursor: 'pointer', fontSize: '28px'
+                                    cursor: 'pointer', fontSize: '28px',
+                                    transform: previewMood === m.value ? 'scale(1.1)' : 'scale(1)',
+                                    transition: 'transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1)'
                                 }}>
                                 {m.icon}
                             </button>
@@ -641,7 +686,8 @@ const JournalView = ({ entries, folders, entryToEdit, activeFolder: initialActiv
             </div>
 
             {/* --- UNIFIED LIFE PANEL (RIGHT RAIL) --- */}
-            <div style={{ width: `${rightWidth}px`, paddingLeft: '10px', display: 'flex', flexDirection: 'column', borderLeft: '1px solid var(--border-color)', background: 'var(--bg-secondary)', height: '100%', flexShrink: 0 }}>
+            <div className="sidebar-transition sidebar-right"
+                style={{ width: `${rightWidth}px`, paddingLeft: '10px', display: 'flex', flexDirection: 'column', borderLeft: '1px solid var(--border-color)', background: 'var(--bg-secondary)', height: '100%', flexShrink: 0 }}>
 
                 {/* 1. QUICK CHECK-IN (TOP) */}
                 <div style={{ flex: '0 0 auto', maxHeight: '50%', overflowY: 'auto', paddingRight: '5px' }}>
@@ -711,11 +757,11 @@ const JournalView = ({ entries, folders, entryToEdit, activeFolder: initialActiv
                             <div style={{ background: 'var(--bg-primary)', border: '1px solid var(--border-color)', padding: '15px', borderRadius: '4px' }}>
                                 <div style={{ fontSize: '10px', color: 'var(--muted-text)', fontFamily: 'var(--font-mono)', marginBottom: '5px' }}>THIS WEEK</div>
                                 <div style={{ fontSize: '24px', fontWeight: 'bold', display: 'flex', alignItems: 'baseline', gap: '5px', color: 'var(--contrast-text)' }}>
-                                    {entries.filter(e => {
+                                    <CountUp end={entries.filter(e => {
                                         const d = new Date(e.date || Date.now());
                                         const now = new Date();
                                         return d > new Date(now.setDate(now.getDate() - 7));
-                                    }).length}
+                                    }).length} />
                                     <span style={{ fontSize: '12px', fontWeight: 'normal', color: 'var(--muted-text)' }}>entries</span>
                                 </div>
                                 <div style={{ fontSize: '10px', color: 'var(--nothing-red)', marginTop: '10px' }}>Keep the streak alive! 🔥</div>

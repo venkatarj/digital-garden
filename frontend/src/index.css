@@ -25,6 +25,26 @@
 
   --card-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
   --transition-speed: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  --easing-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+/* Life OS: Atmospheric Mood Tint */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background: var(--active-mood-color, transparent);
+  opacity: 0.06;
+  /* Subtle influence */
+  pointer-events: none;
+  z-index: 9999;
+  mix-blend-mode: multiply;
+  transition: background 1.5s var(--easing-out);
+}
+
+[data-theme='dark'] body::before {
+  mix-blend-mode: overlay;
+  opacity: 0.1;
 }
 
 [data-theme='dark'] {
@@ -102,6 +122,29 @@ body {
 
 /* --- COMPONENT CLASSES --- */
 
+/* Life OS: Focus Dynamics */
+.journal-view-container {
+  transition: background-color 0.8s ease;
+}
+
+.sidebar-transition {
+  transition: all 0.8s var(--easing-out);
+  will-change: transform, opacity, filter;
+}
+
+/* When Writer focuses: Sidebars fade back */
+.focus-mode .sidebar-left {
+  opacity: 0.4;
+  transform: translateX(-10px) scale(0.98);
+  filter: blur(2px) grayscale(0.5);
+}
+
+.focus-mode .sidebar-right {
+  opacity: 0.4;
+  transform: translateX(10px) scale(0.98);
+  filter: blur(2px) grayscale(0.5);
+}
+
 .app-container {
   min-height: 100vh;
   display: flex;
@@ -109,22 +152,32 @@ body {
 }
 
 /* Editor Card - The Core "Brightening" Effect */
+/* Editor Card - Living Canvas */
 .editor-card {
   background: var(--glass-bg);
-  /* Use variable for auto-switching */
   border-radius: 20px;
   padding: 40px;
-  /* Generous whitespace */
-  transition: all 0.4s var(--easing-smooth);
+  transition: all 1.2s var(--easing-out);
+  /* Slow breath */
   border: 1px solid var(--glass-border);
+  transform-origin: center top;
 }
 
-/* When focused, it becomes pure color and lifts slightly */
+/* Active Writing: Scale up & Lift */
 .editor-card.focused {
   background: var(--bg-primary);
-  box-shadow: var(--card-shadow);
+  box-shadow: 0 20px 50px -10px rgba(0, 0, 0, 0.1);
   border-color: var(--accent-primary);
-  transform: translateY(-2px);
+  transform: scale(1.02) translateY(-5px);
+}
+
+/* Thought Settled: Calm down */
+.thought-settled .editor-card.focused {
+  transform: scale(1.0) translateY(0);
+  /* Breathe out */
+  box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.05);
+  border-color: var(--glass-border);
+  /* Relax border */
 }
 
 /* Mood Buttons */
