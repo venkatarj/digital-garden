@@ -42,6 +42,7 @@ const JournalView = ({ entries, folders, entryToEdit, activeFolder: initialActiv
     // Navigation State
     const [expandedFolders, setExpandedFolders] = useState([initialActiveFolder || 'Journal']); // For Accordion
     const [isFolderPickerOpen, setIsFolderPickerOpen] = useState(false);
+    const [selectedDate, setSelectedDate] = useState(null); // Active Recall: Date Filter
 
     // Smart Feature State
     const [suggestedTags, setSuggestedTags] = useState([]);
@@ -451,19 +452,24 @@ const JournalView = ({ entries, folders, entryToEdit, activeFolder: initialActiv
             <div className="sidebar-transition sidebar-left"
                 style={{ width: `${middleWidth}px`, borderRight: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', paddingRight: '10px', overflowY: 'auto', flexShrink: 0 }}>
 
-                {/* Search */}
+                {/* Search & Date Filter Indicator */}
                 <div style={{ position: 'relative', marginBottom: '15px' }}>
                     <Search size={14} color="var(--muted-text)" style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)' }} />
                     <input
-                        placeholder="Filter entries..."
+                        placeholder={selectedDate ? `Filtering: ${selectedDate}` : "Filter entries..."}
                         value={searchTerm}
                         onChange={e => setSearchTerm(e.target.value)}
                         style={{
                             width: '100%', padding: '8px 10px 8px 30px', borderRadius: '8px',
-                            border: '1px solid var(--border-color)', fontSize: '13px',
-                            outline: 'none', background: 'var(--bg-secondary)', color: 'var(--contrast-text)'
+                            border: selectedDate ? '1px solid var(--accent-primary)' : '1px solid var(--border-color)',
+                            fontSize: '13px', outline: 'none', background: 'var(--bg-secondary)', color: 'var(--contrast-text)'
                         }}
                     />
+                    {selectedDate && (
+                        <button onClick={() => setSelectedDate(null)} style={{ position: 'absolute', right: '5px', top: '50%', transform: 'translateY(-50%)', border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--nothing-red)' }}>
+                            <Trash2 size={12} />
+                        </button>
+                    )}
                 </div>
 
                 {/* Categories Accordion */}
@@ -471,7 +477,11 @@ const JournalView = ({ entries, folders, entryToEdit, activeFolder: initialActiv
                     const isExpanded = expandedFolders.includes(folderName);
                     const folderEntries = entries.filter(e => e.folder === folderName);
                     const filteredEntries = folderEntries
-                        .filter(e => e.title.toLowerCase().includes(searchTerm.toLowerCase()) || e.content.toLowerCase().includes(searchTerm.toLowerCase()))
+                        .filter(e => {
+                            const matchSearch = e.title.toLowerCase().includes(searchTerm.toLowerCase()) || e.content.toLowerCase().includes(searchTerm.toLowerCase());
+                            const matchDate = selectedDate ? e.date === selectedDate : true;
+                            return matchSearch && matchDate;
+                        })
                         .sort((a, b) => b.id - a.id);
 
                     return (
@@ -897,21 +907,30 @@ const JournalView = ({ entries, folders, entryToEdit, activeFolder: initialActiv
                         {Array.from({ length: 35 }).map((_, i) => {
                             const day = i - new Date(new Date().getFullYear(), new Date().getMonth(), 1).getDay() + 1;
                             const date = new Date(new Date().getFullYear(), new Date().getMonth(), day);
+                            const dateString = date.toISOString().split('T')[0];
                             const isToday = date.toDateString() === new Date().toDateString();
                             const isValidDay = day > 0 && day <= new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate();
-                            const hasEntry = entries.some(e => e.date === date.toISOString().split('T')[0]); // Simple date match
+                            const dayEntries = entries.filter(e => e.date === dateString);
+                            const hasEntry = dayEntries.length > 0;
+                            const predominantMood = hasEntry ? dayEntries[dayEntries.length - 1].mood : null; // Use latest entry mood
+                            const moodColor = predominantMood ? moodThemes[predominantMood] : 'transparent';
+                            const isSelected = selectedDate === dateString;
 
                             if (!isValidDay) return <div key={i}></div>;
 
                             return (
-                                <div key={i} style={{
-                                    height: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column',
-                                    background: isToday ? 'var(--contrast-text)' : 'transparent',
-                                    color: isToday ? 'var(--bg-primary)' : 'var(--contrast-text)',
-                                    borderRadius: '4px', fontSize: '10px', fontFamily: 'var(--font-mono)', position: 'relative'
-                                }}>
+                                <div key={i}
+                                    onClick={() => isValidDay && setSelectedDate(isSelected ? null : dateString)}
+                                    style={{
+                                        height: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column',
+                                        background: isSelected ? 'var(--accent-primary)' : (hasEntry ? moodColor : 'transparent'),
+                                        color: isSelected ? 'white' : (isToday ? 'var(--accent-primary)' : 'var(--contrast-text)'),
+                                        borderRadius: '6px', fontSize: '10px', fontFamily: 'var(--font-mono)', position: 'relative',
+                                        cursor: 'pointer', border: isToday ? '1px solid var(--accent-primary)' : '1px solid transparent',
+                                        fontWeight: (isToday || hasEntry) ? 'bold' : 'normal',
+                                        opacity: isValidDay ? 1 : 0
+                                    }}>
                                     {day}
-                                    {hasEntry && !isToday && <div style={{ width: '3px', height: '3px', background: 'var(--nothing-red)', borderRadius: '50%', position: 'absolute', bottom: '2px' }}></div>}
                                 </div>
                             );
                         })}
