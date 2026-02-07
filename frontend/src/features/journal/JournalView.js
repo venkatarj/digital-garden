@@ -251,16 +251,23 @@ const JournalView = ({ entries, folders, entryToEdit, activeFolder: initialActiv
         });
         setSuggestedTags(newSuggestions);
 
-        // Life OS: Smart Floating Hint Logic (Last Word)
-        const lastWord = lowerContent.split(/[\s\n]+/).pop()?.replace(/[^a-z0-9]/g, '');
-        const relevantTag = lastWord ? Object.keys(KEYWORDS).find(tag =>
-            KEYWORDS[tag].includes(lastWord) && !tags.includes(tag)
-        ) : null;
+        // Life OS: Smart Floating Hint Logic (Last 4 words for context)
+        const recentWords = lowerContent.split(/[\s\n]+/).slice(-4).map(w => w.replace(/[^a-z0-9]/g, ''));
+        let foundTag = null;
 
-        if (relevantTag) {
-            setActiveHint(relevantTag);
-            // Clear hint after 5s if not clicked
-            setTimeout(() => setActiveHint(null), 5000);
+        // Check recent words against keywords
+        for (const word of recentWords) {
+            if (!word) continue;
+            const tag = Object.keys(KEYWORDS).find(k => KEYWORDS[k].includes(word));
+            if (tag && !tags.includes(tag)) {
+                foundTag = tag;
+                break;
+            }
+        }
+
+        if (foundTag) {
+            setActiveHint(foundTag);
+            setTimeout(() => setActiveHint(null), 8000); // Persist for 8s
         }
     }, [content, tags]);
 
