@@ -251,12 +251,12 @@ const JournalView = ({ entries, folders, entryToEdit, activeFolder: initialActiv
         });
         setSuggestedTags(newSuggestions);
 
-        // Life OS: Smart Floating Hint Logic (Last 4 words for context)
-        const recentWords = lowerContent.split(/[\s\n]+/).slice(-4).map(w => w.replace(/[^a-z0-9]/g, ''));
+        // Life OS: Smart Hint Logic (Full Scan)
+        const words = lowerContent.split(/[\s\n]+/).map(w => w.replace(/[^a-z0-9]/g, ''));
         let foundTag = null;
 
-        // Check recent words against keywords
-        for (const word of recentWords) {
+        // Scan ALL content to find first untagged keyword
+        for (const word of words) {
             if (!word) continue;
             const tag = Object.keys(KEYWORDS).find(k => KEYWORDS[k].includes(word));
             if (tag && !tags.includes(tag)) {
@@ -265,10 +265,7 @@ const JournalView = ({ entries, folders, entryToEdit, activeFolder: initialActiv
             }
         }
 
-        if (foundTag) {
-            setActiveHint(foundTag);
-            setTimeout(() => setActiveHint(null), 8000); // Persist for 8s
-        }
+        setActiveHint(foundTag);
     }, [content, tags]);
 
     // --- ACTIONS ---
