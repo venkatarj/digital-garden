@@ -299,3 +299,57 @@ textarea::placeholder {
   opacity: 1;
   box-shadow: 0 0 8px var(--accent-primary);
 }
+
+/* Life OS: Deep Dive Overlay */
+.overlay-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(8px);
+  z-index: 9999;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  animation: fadeIn 0.3s ease-out;
+}
+
+.deep-dive-card {
+  background: var(--bg-primary);
+  width: 600px;
+  max-width: 90%;
+  padding: 40px;
+  border-radius: 20px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
+  border: 1px solid var(--border-color);
+  animation: slideUp 0.4s var(--easing-out);
+}
+
+.deep-dive-card textarea:focus {
+  background: var(--bg-secondary);
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}

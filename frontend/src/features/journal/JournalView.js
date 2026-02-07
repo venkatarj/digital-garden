@@ -121,10 +121,36 @@ const JournalView = ({ entries, folders, entryToEdit, activeFolder: initialActiv
         { icon: <Moon size={24} />, value: '😞', label: 'Sad' },
         { icon: <Frown size={24} />, value: '😡', label: 'Angry' },
     ];
-    const prompts = {
-        reflect: ["What went well?", "What drained you?", "One thing to improve:"],
-        vent: ["Why do I feel this way?", "Is this fact or feeling?", "Let it all out:"],
-        gratitude: ["1. ", "2. ", "3. "],
+    // Life OS: "Deep Dive" Questions
+    const DEEP_DIVE_QUESTIONS = {
+        reflect: [
+            "What is one thing you learned about yourself today?",
+            "If you could live today over again, what would you do differently?",
+            "What gave you energy today? What took it away?",
+            "What are you avoiding right now?"
+        ],
+        vent: [
+            "What is the specific emotion you are feeling right now?",
+            "Is this feeling a fact, or an interpretation?",
+            "What would the 'best version of you' say to this situation?",
+            "Write it all out. Leave nothing in your head."
+        ],
+        gratitude: [
+            "Who is someone that made your life easier today?",
+            "What is a small thing you took for granted today?",
+            "What is a challenge that turned into a lesson?",
+            "List 3 things that made you smile."
+        ]
+    };
+
+    const [activeOverlay, setActiveOverlay] = useState(null); // 'reflect', 'vent', 'gratitude' or null
+    const [currentQuestion, setCurrentQuestion] = useState('');
+
+    const openOverlay = (type) => {
+        const questions = DEEP_DIVE_QUESTIONS[type];
+        const randomQ = questions[Math.floor(Math.random() * questions.length)];
+        setCurrentQuestion(randomQ);
+        setActiveOverlay(type);
     };
 
     const helperStyle = {
@@ -270,10 +296,7 @@ const JournalView = ({ entries, folders, entryToEdit, activeFolder: initialActiv
 
     // --- ACTIONS ---
 
-    const insertPrompt = (type) => {
-        const lines = prompts[type].join('\n\n');
-        setContent(prev => prev + (prev ? '\n\n' : '') + lines);
-    };
+    // insertPrompt replaced by openOverlay above
 
     const handleAutoTitle = () => {
         if (!content) return;
@@ -585,9 +608,9 @@ const JournalView = ({ entries, folders, entryToEdit, activeFolder: initialActiv
                 {/* Writing Helpers */}
                 {showHelper && (
                     <div className="helper-reveal" style={{ display: 'flex', gap: '10px', marginBottom: '15px', justifyContent: 'center' }}>
-                        <button onClick={() => insertPrompt('reflect')} style={helperStyle}>🤔 Reflect</button>
-                        <button onClick={() => insertPrompt('vent')} style={helperStyle}>😤 Vent</button>
-                        <button onClick={() => insertPrompt('gratitude')} style={helperStyle}>🙏 Gratitude</button>
+                        <button onClick={() => openOverlay('reflect')} style={helperStyle}>🤔 Deep Dive</button>
+                        <button onClick={() => openOverlay('vent')} style={helperStyle}>😤 Clear Mind</button>
+                        <button onClick={() => openOverlay('gratitude')} style={helperStyle}>🙏 Give Thanks</button>
                     </div>
                 )}
                 <div style={{ textAlign: 'center', marginBottom: '10px' }}>
@@ -648,10 +671,41 @@ const JournalView = ({ entries, folders, entryToEdit, activeFolder: initialActiv
                 {/* Delight Button */}
                 {content.length > 50 && (
                     <div style={{ margin: '10px 0', textAlign: 'center' }}>
-                        <button onClick={() => setContent(content + '\\n\\n✨ Today I learned: ')}
+                        <button onClick={() => setContent(content + '\n\n✨ Today I learned: ')}
                             style={{ background: 'var(--bg-primary)', border: '1px solid var(--border-color)', padding: '6px 12px', borderRadius: '20px', cursor: 'pointer', color: 'var(--accent-primary)', fontSize: '13px' }}>
                             ✨ Add a small win
                         </button>
+                    </div>
+                )}
+
+                {/* Life OS: Deep Dive Overlay */}
+                {activeOverlay && (
+                    <div className="overlay-backdrop" onClick={() => setActiveOverlay(null)}>
+                        <div className="deep-dive-card" onClick={e => e.stopPropagation()}>
+                            <h3 style={{ color: 'var(--accent-primary)', marginBottom: '10px', fontSize: '14px', textTransform: 'uppercase', letterSpacing: '1px' }}>
+                                {activeOverlay === 'vent' ? 'Clear Your Mind' : (activeOverlay === 'reflect' ? 'Deep Reflection' : 'Gratitude Practice')}
+                            </h3>
+                            <div style={{ fontSize: '24px', fontWeight: 'bold', marginBottom: '20px', lineHeight: '1.4', color: 'var(--contrast-text)' }}>
+                                {currentQuestion}
+                            </div>
+                            <textarea
+                                autoFocus
+                                placeholder="Type your answer..."
+                                style={{ width: '100%', minHeight: '100px', border: 'none', background: 'var(--bg-secondary)', padding: '15px', borderRadius: '10px', fontSize: '16px', color: 'var(--contrast-text)', resize: 'none', outline: 'none' }}
+                                onKeyDown={e => {
+                                    if (e.key === 'Enter' && !e.shiftKey) {
+                                        e.preventDefault();
+                                        // Save to journal
+                                        const newEntry = `\n\n### ${currentQuestion}\n${e.target.value}`;
+                                        setContent(prev => prev + newEntry);
+                                        setActiveOverlay(null);
+                                    }
+                                }}
+                            />
+                            <div style={{ marginTop: '10px', fontSize: '12px', color: 'var(--muted-text)', textAlign: 'right' }}>
+                                Press <strong>Enter</strong> to save to journal
+                            </div>
+                        </div>
                     </div>
                 )}
 
