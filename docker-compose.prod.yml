@@ -1,0 +1,64 @@
+version: '3.8'
+
+services:
+  # The frontend service acts as the main web server/reverse proxy (Nginx)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.prod
+      args:
+        VITE_API_URL: /api
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./certbot/conf:/etc/letsencrypt
+      - ./certbot/www:/var/www/certbot
+      - ./ssl:/etc/nginx/ssl
+    depends_on:
+      - backend
+    restart: always
+
+  # The backend API service
+  backend:
+    build: ./backend
+    environment:
+      - APP_PASSWORD=${APP_PASSWORD}
+      - DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD}@db:5432/garden
+      - REDIS_URL=redis://redis:6379/0
+      # Persist HF cache
+      - SENTENCE_TRANSFORMERS_HOME=/app/model_cache
+    volumes:
+      - model_cache:/app/model_cache
+    depends_on:
+      - db
+      - redis
+    restart: always
+
+  # Certbot for SSL renewal
+  certbot:
+    image: certbot/certbot
+    volumes:
+      - ./certbot/conf:/etc/letsencrypt
+      - ./certbot/www:/var/www/certbot
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
+
+  # Database
+  db:
+    image: postgres:15-alpine
+    restart: always
+    volumes:
+      - postgres_data_prod:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=garden
+
+  # Cache & Tasks
+  redis:
+    image: redis:7-alpine
+    restart: always
+
+volumes:
+  postgres_data_prod:
+  model_cache:

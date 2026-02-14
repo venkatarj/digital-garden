@@ -6,8 +6,13 @@ services:
     volumes:
       - ./backend:/app
     environment:
-      - APP_PASSWORD=secret
+      - APP_PASSWORD=${APP_PASSWORD:-secret}
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/garden
+      - REDIS_URL=redis://redis:6379/0
     command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    depends_on:
+      - db
+      - redis
 
   frontend:
     build: ./frontend
@@ -18,6 +23,25 @@ services:
       - ./frontend:/app
       - /app/node_modules
     environment:
-      - CHOKIDAR_USEPOLLING=true
+      - VITE_API_URL=http://localhost:8000
     depends_on:
       - backend
+
+  db:
+    image: postgres:15-alpine
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=garden
+    ports:
+      - "5432:5432"
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+volumes:
+  postgres_data:
