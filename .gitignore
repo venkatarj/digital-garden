@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environment variables
+.env
+.env.*
+
+# SSL certificates
+ssl/
+*.pem
+
+# Database
+*.db
+*.sqlite3
+
+# OS specific
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Backups
+*.backup
+*.backup.*
+*.bak
+
+# Node
+node_modules/
+dist/
+.output/
+
+# IDE
+.idea/
+.vscode/

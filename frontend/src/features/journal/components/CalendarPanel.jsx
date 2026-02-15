@@ -15,15 +15,15 @@ const CalendarDay = ({ date, hasEntry, isToday, isSelected, moodColor, onClick }
                     ? 'text-gray-800 font-medium'
                     : 'text-gray-400 opacity-60 hover:opacity-100 hover:bg-gray-100'
             }
-      ${isToday && !isSelected ? 'ring-1 ring-blue-500/30 font-bold text-blue-600 bg-blue-50/50' : ''}
+      ${isToday && !isSelected ? 'bg-blue-500 text-white font-bold shadow-md shadow-blue-500/30' : ''}
     `}
         style={{ backgroundColor: hasEntry && !isSelected ? moodColor : undefined }}
     >
         <span>{date}</span>
 
         {/* Entry Indicator Dot */}
-        {(hasEntry || isToday) && !isSelected && (
-            <div className={`absolute -bottom-1 w-1 h-1 rounded-full ${isToday ? 'bg-blue-500' : 'bg-gray-400/50'}`} />
+        {(hasEntry || isToday) && !isSelected && !isToday && (
+            <div className={`absolute -bottom-1 w-1 h-1 rounded-full ${hasEntry ? 'bg-blue-400' : 'bg-gray-400/50'}`} />
         )}
     </motion.button>
 );

@@ -11,6 +11,8 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements file first to leverage Docker caching
+# Copy requirements file first to leverage Docker caching for dependencies
+# CRITICAL: Do NOT copy the rest of the app code yet!
 COPY requirements.txt .
 
 # Install CPU-only PyTorch first (Critical for saving space on VPS)

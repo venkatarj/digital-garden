@@ -4,14 +4,14 @@ import { Smile, Sun, Meh, Moon, Frown } from 'lucide-react';
 
 const MoodButton = ({ mood, icon: Icon, color, selected, onClick, label }) => (
     <motion.button
-        whileHover={{ scale: 1.05, y: -2 }}
+        whileHover={{ scale: 1.1 }}
         whileTap={{ scale: 0.95 }}
         onClick={onClick}
         className={`
       relative group p-4 rounded-2xl transition-all duration-300
       ${selected
-                ? `bg-gradient-to-br ${color} shadow-lg ring-2 ring-offset-2 ring-offset-white ring-${color.split(' ')[1].replace('to-', '')}`
-                : 'bg-white/40 hover:bg-white/60 backdrop-blur-sm border border-white/20'
+                ? `bg-gradient-to-br ${color} shadow-lg ring-4 ring-offset-2 ring-offset-white/80 ring-${color.split(' ')[1].replace('to-', '')}/20 transform scale-110`
+                : 'bg-white/40 hover:bg-white/60 backdrop-blur-sm border border-white/20 hover:scale-105'
             }
     `}
     >

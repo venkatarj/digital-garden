@@ -19,7 +19,8 @@ const QuickCheckIn = ({ onAddEntry, isManagingHabits, onToggleManage }) => {
         <motion.div
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
-            className="p-5 rounded-2xl glass-card relative overflow-hidden group"
+            className="p-5 rounded-[var(--radius-lg)] glass-card relative overflow-hidden group"
+            style={{ boxShadow: 'var(--shadow-soft)' }}
         >
             <div className="absolute top-0 right-0 p-3 opacity-0 group-hover:opacity-100 transition-opacity">
                 <button

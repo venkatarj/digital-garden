@@ -47,7 +47,6 @@ const JournalView = ({ entries, folders, entryToEdit, activeFolder: initialActiv
 
     // Navigation State
     const [expandedFolders, setExpandedFolders] = useState([initialActiveFolder || 'Journal']); // For Accordion
-    const [isFolderPickerOpen, setIsFolderPickerOpen] = useState(false);
     const [selectedDate, setSelectedDate] = useState(null); // Active Recall: Date Filter
 
     // --- MODAL & TOAST ---
@@ -184,6 +183,17 @@ const JournalView = ({ entries, folders, entryToEdit, activeFolder: initialActiv
 
     // --- EFFECTS ---
 
+    // Sync folder from App.jsx (fixes folder navigation bug)
+    useEffect(() => {
+        if (initialActiveFolder && initialActiveFolder !== currentFolder) {
+            setCurrentFolder(initialActiveFolder);
+            // Expand the folder when navigating to it
+            if (!expandedFolders.includes(initialActiveFolder)) {
+                setExpandedFolders([initialActiveFolder]);
+            }
+        }
+    }, [initialActiveFolder]);
+
     // Sync background
     useEffect(() => {
         setAppBackground(moodThemes[selectedMood] || '#F5F7F5');
@@ -236,11 +246,20 @@ const JournalView = ({ entries, folders, entryToEdit, activeFolder: initialActiv
 
     const toggleFolder = (folder) => {
         if (expandedFolders.includes(folder)) {
-            setExpandedFolders(prev => prev.filter(f => f !== folder));
+            setExpandedFolders([]);
         } else {
-            setExpandedFolders(prev => [...prev, folder]);
+            setExpandedFolders([folder]);
         }
     };
+
+    // Auto-close accordion after 10s of inactivity
+    useEffect(() => {
+        if (expandedFolders.length === 0) return;
+        const timer = setTimeout(() => {
+            setExpandedFolders([]);
+        }, 10000);
+        return () => clearTimeout(timer);
+    }, [expandedFolders]);
 
     // Life OS: "Thought Settling" Engine
     useEffect(() => {
@@ -554,7 +573,10 @@ const JournalView = ({ entries, folders, entryToEdit, activeFolder: initialActiv
 
             {/* --- RIGHT COLUMN: EDITOR --- */}
             <div className={`app-container ${isTyping || isEditorFocused ? 'zen-mode' : ''}`}
-                style={{ flex: 1, margin: '0 20px', display: 'flex', flexDirection: 'column', height: '100%', minWidth: '400px' }}>
+                style={{
+                    flex: 1, margin: '0 20px', display: 'flex', flexDirection: 'column', height: '100%', minWidth: '400px',
+                    overflowY: 'auto' /* Enable independent scrolling */
+                }}>
 
                 {/* Growth Animation Overlay */}
                 {showGrowthAnim && (
@@ -566,42 +588,7 @@ const JournalView = ({ entries, folders, entryToEdit, activeFolder: initialActiv
                 {/* Top Bar: Breadcrumbs & Navigation */}
                 <div className="top-bar-container" style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px', color: 'var(--muted-text)', fontSize: '13px', alignItems: 'center', transition: 'opacity 0.5s' }}>
 
-                    {/* Quick-File Pill */}
-                    <div style={{ position: 'relative' }}>
-                        <button onClick={() => setIsFolderPickerOpen(!isFolderPickerOpen)}
-                            style={{
-                                background: 'var(--bg-secondary)', border: 'none', borderRadius: '20px', padding: '6px 15px',
-                                cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px',
-                                fontSize: '13px', fontWeight: 'bold', color: 'var(--contrast-text)',
-                                boxShadow: 'var(--card-shadow)'
-                            }}>
-                            <Folder size={14} /> {currentFolder}
-                        </button>
-
-                        {/* Folder Dropdown */}
-                        {isFolderPickerOpen && (
-                            <div style={{
-                                position: 'absolute', top: '110%', left: 0, background: 'var(--bg-primary)',
-                                borderRadius: '12px', padding: '10px', boxShadow: 'var(--card-shadow)',
-                                zIndex: 100, minWidth: '150px', border: '1px solid var(--border-color)'
-                            }}>
-                                <div style={{ fontSize: '11px', fontWeight: 'bold', color: 'var(--muted-text)', marginBottom: '5px', paddingLeft: '5px' }}>MOVE TO...</div>
-                                {folders && folders.map(f => (
-                                    <div key={f} onClick={() => { setCurrentFolder(f); setIsFolderPickerOpen(false); }}
-                                        style={{
-                                            padding: '8px 10px', cursor: 'pointer', borderRadius: '6px', fontSize: '13px',
-                                            color: currentFolder === f ? 'var(--contrast-text)' : 'var(--muted-text)',
-                                            background: currentFolder === f ? 'var(--border-color)' : 'transparent'
-                                        }}>
-                                        {f}
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                    </div>
-
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <span style={{ color: 'var(--border-color)' }}>/</span>
                         <span style={{ fontWeight: 'bold', color: 'var(--contrast-text)', display: 'flex', alignItems: 'center', gap: '5px' }}>
                             <FileText size={14} /> {id ? (title || 'Untitled') : 'New Entry'}
                         </span>
@@ -641,7 +628,7 @@ const JournalView = ({ entries, folders, entryToEdit, activeFolder: initialActiv
                 </div>
 
                 {/* Mood Selector - Animated */}
-                <div className="mood-selector-container" style={{ marginBottom: '20px', textAlign: 'center', transition: 'opacity 0.5s' }}>
+                <div className="mood-selector-container" style={{ marginBottom: '20px', textAlign: 'center', transition: 'opacity 0.5s', maxWidth: '680px', margin: '0 auto 20px auto', width: '100%' }}>
                     <MoodSelector
                         selectedMood={selectedMood}
                         onSelectMood={setSelectedMood}
@@ -651,7 +638,7 @@ const JournalView = ({ entries, folders, entryToEdit, activeFolder: initialActiv
 
                 {/* Writing Helpers */}
                 {showHelper && (
-                    <div className="helper-reveal helper-buttons-container" style={{ display: 'flex', gap: '10px', marginBottom: '15px', justifyContent: 'center', transition: 'opacity 0.5s' }}>
+                    <div className="helper-reveal helper-buttons-container" style={{ display: 'flex', gap: '10px', marginBottom: '15px', justifyContent: 'center', transition: 'opacity 0.5s', maxWidth: '680px', margin: '0 auto 15px auto', width: '100%' }}>
                         <button onClick={() => openOverlay('reflect')} style={helperStyle}>🤔 Deep Dive</button>
                         <button onClick={() => openOverlay('vent')} style={helperStyle}>😤 Clear Mind</button>
                         <button onClick={() => openOverlay('gratitude')} style={helperStyle}>🙏 Give Thanks</button>
@@ -662,7 +649,13 @@ const JournalView = ({ entries, folders, entryToEdit, activeFolder: initialActiv
                 </div>
 
                 {/* Editor Card Container */}
-                <div className={`editor-card ${isEditorFocused ? 'focused' : ''}`} style={{ boxShadow: isEditorFocused ? 'var(--card-shadow)' : 'none', border: isEditorFocused ? '1px solid var(--border-color)' : '1px solid transparent', position: 'relative' }}>
+                <div className={`editor-card ${isEditorFocused ? 'focused' : ''}`}
+                    style={{
+                        boxShadow: isEditorFocused ? 'var(--card-shadow)' : 'none',
+                        border: isEditorFocused ? '1px solid var(--border-color)' : '1px solid transparent',
+                        position: 'relative',
+                        maxWidth: '680px', margin: '0 auto', width: '100%'
+                    }}>
                     {/* Life OS: Smart Floating Hint */}
                     {activeHint && (
                         <div className="fail-safe-hint fade-in-up"
@@ -824,7 +817,7 @@ const JournalView = ({ entries, folders, entryToEdit, activeFolder: initialActiv
                 {isReflecting && (
                     <div style={{
                         position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: 'var(--glass-bg)', backdropFilter: 'blur(5px)',
-                        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 10, borderRadius: '20px'
+                        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 10, borderRadius: 'var(--radius-lg)'
                     }}>
                         <h3 style={{ color: 'var(--accent-primary)', marginBottom: '15px' }}>Entry Saved.</h3>
                         <p className="fade-in-up" style={{ color: 'var(--contrast-text)', marginBottom: '20px', fontSize: '20px', fontWeight: '500', maxWidth: '80%', textAlign: 'center' }}>
@@ -866,9 +859,9 @@ const JournalView = ({ entries, folders, entryToEdit, activeFolder: initialActiv
                         />
                     </div>
 
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
-                        <h4 style={{ margin: 0, color: 'var(--contrast-text)', fontSize: '12px', fontWeight: 'bold', fontFamily: 'var(--font-mono)', letterSpacing: '1px' }}>HABIT TRACKER</h4>
-                        <Settings size={14} color="var(--contrast-text)" style={{ cursor: 'pointer', opacity: 0.5 }} onClick={() => setIsManagingHabits(!isManagingHabits)} />
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', position: 'sticky', top: 0, background: 'var(--bg-secondary)', zIndex: 5, paddingBottom: '5px' }}>
+                        <h4 style={{ margin: 0, color: 'var(--contrast-text)', fontSize: '14px', fontWeight: '600' }}>Habit Tracker</h4>
+                        <Settings size={14} color="var(--muted-text)" style={{ cursor: 'pointer', opacity: 0.8 }} onClick={() => setIsManagingHabits(!isManagingHabits)} />
                     </div>
 
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -877,10 +870,12 @@ const JournalView = ({ entries, folders, entryToEdit, activeFolder: initialActiv
                             return (
                                 <div key={h.id} onClick={() => !isManagingHabits && toggleHabit(h.id)}
                                     style={{
-                                        display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 10px',
+                                        display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px',
                                         background: isDone ? 'var(--contrast-text)' : 'var(--bg-primary)',
                                         border: '1px solid var(--border-color)', cursor: 'pointer', transition: 'all 0.2s',
-                                        color: isDone ? 'var(--bg-primary)' : 'var(--contrast-text)'
+                                        color: isDone ? 'var(--bg-primary)' : 'var(--contrast-text)',
+                                        borderRadius: 'var(--radius-md)', marginBottom: '8px',
+                                        boxShadow: 'var(--shadow-soft)'
                                     }}>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                                         <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: isDone ? 'var(--nothing-red)' : 'var(--border-color)', boxShadow: isDone ? '0 0 5px var(--nothing-red)' : 'none' }}></div>
@@ -921,8 +916,8 @@ const JournalView = ({ entries, folders, entryToEdit, activeFolder: initialActiv
                 <div style={{ marginTop: '20px', borderTop: '1px solid var(--border-color)' }}>
                     <div onClick={() => setIsInsightsOpen(!isInsightsOpen)}
                         style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px 0', cursor: 'pointer', color: 'var(--muted-text)' }}>
-                        <h4 style={{ margin: 0, fontSize: '12px', fontFamily: 'var(--font-mono)', letterSpacing: '1px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <BarChart2 size={14} /> INSIGHTS
+                        <h4 style={{ margin: 0, fontSize: '14px', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--contrast-text)' }}>
+                            <BarChart2 size={16} /> Insights
                         </h4>
                         {isInsightsOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
                     </div>

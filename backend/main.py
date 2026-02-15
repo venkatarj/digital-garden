@@ -1,23 +1,41 @@
 from fastapi import FastAPI, HTTPException, Depends, Header
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
-from sqlalchemy import desc
-from datetime import date
+from sqlalchemy import desc, text
+from datetime import date, datetime, timedelta
 import os
 import models
 from database import engine, get_db
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, EmailStr
 from typing import List, Optional
-from fastapi import FastAPI, HTTPException, Depends, Header, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Depends, Header, WebSocket, WebSocketDisconnect, Request
+import auth
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.feature_extraction.text import CountVectorizer
 import numpy as np
+import logging
+import time
+
+# Setup Logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Create Database Tables
 models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
+
+# --- HEALTH CHECK ---
+@app.get("/health")
+def health_check(db: Session = Depends(get_db)):
+    try:
+        # Check DB connection
+        db.execute(text("SELECT 1"))
+        return {"status": "ok", "database": "connected"}
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"Database connection failed: {str(e)}")
 
 # Load AI Model (Small, fast)
 model = SentenceTransformer('all-MiniLM-L6-v2')
@@ -27,11 +45,25 @@ APP_PASSWORD = os.getenv("APP_PASSWORD", "secret")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    # Restrict to frontend origin (local + prod)
+    allow_origins=["http://localhost:5173", "http://localhost:3000", "https://venkatarohithj.com"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    start_time = time.time()
+    try:
+        response = await call_next(request)
+        process_time = time.time() - start_time
+        logger.info(f"Path: {request.url.path} Method: {request.method} Status: {response.status_code} Duration: {process_time:.4f}s")
+        return response
+    except Exception as e:
+        process_time = time.time() - start_time
+        logger.error(f"Request failed: {request.url.path} Error: {str(e)} Duration: {process_time:.4f}s", exc_info=True)
+        raise e
 
 # --- WEBSOCKET MANAGER ---
 class ConnectionManager:
@@ -52,18 +84,121 @@ class ConnectionManager:
 manager = ConnectionManager()
 
 # --- AUTHENTICATION ---
-def verify_token(x_token: str = Header(None)):
-    if x_token != "valid_token":
-        raise HTTPException(status_code=401, detail="Invalid Value")
+security = HTTPBearer()
 
-class LoginSchema(BaseModel):
-    password: str
+def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security), db: Session = Depends(get_db)) -> models.User:
+    """
+    Dependency to get current authenticated user from JWT token.
+    Supports both Authorization: Bearer <token> and x-token header for backward compatibility.
+    """
+    token = credentials.credentials if credentials else None
+    
+    if not token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    # Decode JWT
+    payload = auth.decode_access_token(token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+    
+    user_id: int = payload.get("sub")
+    if user_id is None:
+        raise HTTPException(status_code=401, detail="Invalid token payload")
+    
+    # Load user from database
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=401, detail="User not found")
+    
+    return user
 
-@app.post("/login")
-def login(data: LoginSchema):
-    if data.password == APP_PASSWORD:
-        return {"token": "valid_token"}
-    raise HTTPException(status_code=401, detail="Incorrect Password")
+# Optional: backward compatibility with x-token header
+def verify_token_legacy(x_token: str = Header(None)):
+    """Legacy token verification - kept for backward compatibility during migration"""
+    if x_token == "valid_token":
+        return True
+    raise HTTPException(status_code=401, detail="Invalid token")
+
+# --- AUTH SCHEMAS ---
+class GoogleAuthSchema(BaseModel):
+    credential: str  # Google ID token from frontend
+
+class UserResponse(BaseModel):
+    id: int
+    email: str
+    created_at: datetime
+    class Config:
+        orm_mode = True
+
+class TokenResponse(BaseModel):
+    token: str
+    user: UserResponse
+
+# --- AUTH ROUTES ---
+@app.post("/auth/google", response_model=TokenResponse)
+async def google_auth(data: GoogleAuthSchema, db: Session = Depends(get_db)):
+    """
+    Authenticate with Google OAuth.
+    Accepts Google ID token from frontend, verifies it, and returns JWT.
+    Creates user if first-time login.
+    """
+    # Verify Google token
+    google_user = await auth.verify_google_token(data.credential)
+
+    if not google_user:
+        raise HTTPException(status_code=401, detail="Invalid Google token")
+
+    if not google_user.get('email_verified'):
+        raise HTTPException(status_code=401, detail="Email not verified with Google")
+
+    # Check if user exists
+    user = db.query(models.User).filter(
+        models.User.google_id == google_user['sub']
+    ).first()
+
+    if not user:
+        # Check if email already exists (edge case: user registered before migration)
+        existing_email = db.query(models.User).filter(
+            models.User.email == google_user['email']
+        ).first()
+
+        if existing_email:
+            raise HTTPException(
+                status_code=400,
+                detail="Email already registered with different auth method"
+            )
+
+        # Create new user
+        user = models.User(
+            email=google_user['email'],
+            google_id=google_user['sub'],
+            name=google_user.get('name'),
+            picture=google_user.get('picture')
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+    else:
+        # Update user info if changed
+        user.name = google_user.get('name')
+        user.picture = google_user.get('picture')
+        db.commit()
+        db.refresh(user)
+
+    # Create JWT token (same as before)
+    access_token = auth.create_access_token(data={"sub": str(user.id)})
+
+    return {
+        "token": access_token,
+        "user": user
+    }
+
+@app.get("/auth/me", response_model=UserResponse)
+def get_me(current_user: models.User = Depends(get_current_user)):
+    """
+    Get current authenticated user info.
+    """
+    return current_user
 
 # --- SCHEMAS ---
 
@@ -80,9 +215,9 @@ class HabitCreate(BaseModel):
     icon: str
 
 class EntryCreate(BaseModel):
-    title: str
-    content: str
-    folder: str
+    title: str = Field(..., max_length=255)
+    content: str = Field(..., max_length=20000)
+    folder: str = Field(..., max_length=50)
     mood: str
     completed_habit_ids: List[int] = [] 
 
@@ -92,14 +227,25 @@ class EntryResponse(BaseModel):
     content: str
     folder: str
     mood: str
-    date: str
+    date: date
     completed_habits: List[HabitSchema] = []
     class Config:
         orm_mode = True
 
-class ReminderSchema(BaseModel):
+class ReminderCreate(BaseModel):
     text: str
     date: str
+
+class ReminderUpdate(BaseModel):
+    completed: Optional[bool] = None
+
+class ReminderResponse(BaseModel):
+    id: int
+    text: str
+    date: str
+    completed: bool
+    class Config:
+        orm_mode = True
 
 class SearchSchema(BaseModel):
     query: str
@@ -110,29 +256,35 @@ class AutoTagSchema(BaseModel):
 # --- ENDPOINTS ---
 
 # 1. Habits (Meta)
-@app.get("/habits/", response_model=List[HabitSchema], dependencies=[Depends(verify_token)])
-def read_habits(db: Session = Depends(get_db)):
-    return db.query(models.Habit).filter(models.Habit.is_active == True).all()
+@app.get("/habits/", response_model=List[HabitSchema])
+def read_habits(current_user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
+    return db.query(models.Habit).filter(
+        models.Habit.is_active == True,
+        models.Habit.user_id == current_user.id
+    ).all()
 
-@app.post("/habits/", response_model=HabitSchema, dependencies=[Depends(verify_token)])
-def create_habit(habit: HabitCreate, db: Session = Depends(get_db)):
-    db_habit = models.Habit(name=habit.name, icon=habit.icon)
+@app.post("/habits/", response_model=HabitSchema)
+def create_habit(habit: HabitCreate, current_user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
+    db_habit = models.Habit(name=habit.name, icon=habit.icon, user_id=current_user.id)
     db.add(db_habit)
     db.commit()
     db.refresh(db_habit)
     return db_habit
 
-@app.delete("/habits/{habit_id}", dependencies=[Depends(verify_token)])
-def delete_habit(habit_id: int, db: Session = Depends(get_db)):
-    habit = db.query(models.Habit).filter(models.Habit.id == habit_id).first()
+@app.delete("/habits/{habit_id}")
+def delete_habit(habit_id: int, current_user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
+    habit = db.query(models.Habit).filter(
+        models.Habit.id == habit_id,
+        models.Habit.user_id == current_user.id
+    ).first()
     if habit:
         habit.is_active = False # Soft delete
         db.commit()
     return {"ok": True}
 
 # 2. Entries
-@app.post("/entries/", response_model=EntryResponse, dependencies=[Depends(verify_token)])
-def create_entry(entry: EntryCreate, db: Session = Depends(get_db)):
+@app.post("/entries/", response_model=EntryResponse)
+def create_entry(entry: EntryCreate, current_user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
     
     # Create basic entry
     db_entry = models.Entry(
@@ -140,12 +292,16 @@ def create_entry(entry: EntryCreate, db: Session = Depends(get_db)):
         content=entry.content, 
         folder=entry.folder, 
         mood=entry.mood,
-        date=str(date.today())
+        date=date.today(),
+        user_id=current_user.id
     )
     
-    # Associate habits
+    # Associate habits (only user's own habits)
     if entry.completed_habit_ids:
-        habits = db.query(models.Habit).filter(models.Habit.id.in_(entry.completed_habit_ids)).all()
+        habits = db.query(models.Habit).filter(
+            models.Habit.id.in_(entry.completed_habit_ids),
+            models.Habit.user_id == current_user.id
+        ).all()
         db_entry.completed_habits = habits
 
     db.add(db_entry)
@@ -153,9 +309,12 @@ def create_entry(entry: EntryCreate, db: Session = Depends(get_db)):
     db.refresh(db_entry)
     return db_entry
 
-@app.put("/entries/{entry_id}", response_model=EntryResponse, dependencies=[Depends(verify_token)])
-def update_entry(entry_id: int, entry: EntryCreate, db: Session = Depends(get_db)):
-    db_entry = db.query(models.Entry).filter(models.Entry.id == entry_id).first()
+@app.put("/entries/{entry_id}", response_model=EntryResponse)
+def update_entry(entry_id: int, entry: EntryCreate, current_user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
+    db_entry = db.query(models.Entry).filter(
+        models.Entry.id == entry_id,
+        models.Entry.user_id == current_user.id
+    ).first()
     if not db_entry:
         raise HTTPException(status_code=404, detail="Entry not found")
     
@@ -163,22 +322,30 @@ def update_entry(entry_id: int, entry: EntryCreate, db: Session = Depends(get_db
     db_entry.content = entry.content
     db_entry.folder = entry.folder
     db_entry.mood = entry.mood
-    # Update habits (replace existing)
+    # Update habits (replace existing, only user's own habits)
     if entry.completed_habit_ids is not None:
-         habits = db.query(models.Habit).filter(models.Habit.id.in_(entry.completed_habit_ids)).all()
+         habits = db.query(models.Habit).filter(
+             models.Habit.id.in_(entry.completed_habit_ids),
+             models.Habit.user_id == current_user.id
+         ).all()
          db_entry.completed_habits = habits
          
     db.commit()
     db.refresh(db_entry)
     return db_entry
 
-@app.get("/entries/", response_model=List[EntryResponse], dependencies=[Depends(verify_token)])
-def read_entries(db: Session = Depends(get_db)):
-    return db.query(models.Entry).order_by(desc(models.Entry.id)).all()
+@app.get("/entries/", response_model=List[EntryResponse])
+def read_entries(skip: int = 0, limit: int = 50, current_user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
+    return db.query(models.Entry).filter(
+        models.Entry.user_id == current_user.id
+    ).order_by(desc(models.Entry.id)).offset(skip).limit(limit).all()
 
-@app.delete("/entries/{entry_id}", status_code=204, dependencies=[Depends(verify_token)])
-def delete_entry(entry_id: int, db: Session = Depends(get_db)):
-    entry = db.query(models.Entry).filter(models.Entry.id == entry_id).first()
+@app.delete("/entries/{entry_id}", status_code=204)
+def delete_entry(entry_id: int, current_user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
+    entry = db.query(models.Entry).filter(
+        models.Entry.id == entry_id,
+        models.Entry.user_id == current_user.id
+    ).first()
     if not entry:
         raise HTTPException(status_code=404, detail="Entry not found")
     
@@ -187,42 +354,64 @@ def delete_entry(entry_id: int, db: Session = Depends(get_db)):
     return None
 
 # 3. Reminders
-@app.get("/reminders/", dependencies=[Depends(verify_token)])
-def read_reminders(db: Session = Depends(get_db)):
-    return db.query(models.Reminder).order_by(models.Reminder.date).all()
+@app.get("/reminders/", response_model=List[ReminderResponse])
+def read_reminders(current_user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
+    return db.query(models.Reminder).filter(
+        models.Reminder.user_id == current_user.id
+    ).order_by(models.Reminder.date).all()
 
-@app.post("/reminders/", dependencies=[Depends(verify_token)])
-def create_reminder(reminder: ReminderSchema, db: Session = Depends(get_db)):
-    db_reminder = models.Reminder(text=reminder.text, date=reminder.date)
+@app.post("/reminders/", response_model=ReminderResponse)
+def create_reminder(reminder: ReminderCreate, current_user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
+    db_reminder = models.Reminder(text=reminder.text, date=reminder.date, user_id=current_user.id)
     db.add(db_reminder)
     db.commit()
+    db.refresh(db_reminder)
     return db_reminder
 
-@app.delete("/reminders/{reminder_id}", dependencies=[Depends(verify_token)])
-def delete_reminder(reminder_id: int, db: Session = Depends(get_db)):
-    rem = db.query(models.Reminder).filter(models.Reminder.id == reminder_id).first()
+@app.patch("/reminders/{reminder_id}", response_model=ReminderResponse)
+def update_reminder(reminder_id: int, reminder: ReminderUpdate, current_user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
+    db_reminder = db.query(models.Reminder).filter(
+        models.Reminder.id == reminder_id,
+        models.Reminder.user_id == current_user.id
+    ).first()
+    if not db_reminder:
+        raise HTTPException(status_code=404, detail="Reminder not found")
+    
+    if reminder.completed is not None:
+        db_reminder.completed = reminder.completed
+        
+    db.commit()
+    db.refresh(db_reminder)
+    return db_reminder
+
+@app.delete("/reminders/{reminder_id}")
+def delete_reminder(reminder_id: int, current_user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
+    rem = db.query(models.Reminder).filter(
+        models.Reminder.id == reminder_id,
+        models.Reminder.user_id == current_user.id
+    ).first()
     if rem:
         db.delete(rem)
         db.commit()
     return {"ok": True}
 
-# 4. Real-time WebSocket
-@app.websocket("/ws/{client_id}")
-async def websocket_endpoint(websocket: WebSocket, client_id: int):
-    await manager.connect(websocket)
-    try:
-        while True:
-            data = await websocket.receive_text()
-            # Echo for now, or handle commands
-            await manager.broadcast(f"Client #{client_id} says: {data}")
-    except WebSocketDisconnect:
-        manager.disconnect(websocket)
+# 4. Real-time WebSocket (DISABLED)
+# @app.websocket("/ws/{client_id}")
+# async def websocket_endpoint(websocket: WebSocket, client_id: int):
+#     await manager.connect(websocket)
+#     try:
+#         while True:
+#             data = await websocket.receive_text()
+#             # Echo for now, or handle commands
+#             await manager.broadcast(f"Client #{client_id} says: {data}")
+#     except WebSocketDisconnect:
+#         manager.disconnect(websocket)
 
 # 5. Semantic Search
-@app.post("/search/", response_model=List[EntryResponse], dependencies=[Depends(verify_token)])
-def semantic_search(search: SearchSchema, db: Session = Depends(get_db)):
-    # 1. Get all entries
-    entries = db.query(models.Entry).all()
+@app.post("/search/", response_model=List[EntryResponse])
+def semantic_search(search: SearchSchema, current_user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
+    # 1. Get all entries for current user
+    entries = db.query(models.Entry).filter(models.Entry.user_id == current_user.id).all()
     if not entries:
         return []
 
@@ -251,8 +440,8 @@ def semantic_search(search: SearchSchema, db: Session = Depends(get_db)):
     return results
 
 # 6. Auto-Tagging (KeyBERT-lite)
-@app.post("/autotag/", dependencies=[Depends(verify_token)])
-def auto_tag(data: AutoTagSchema):
+@app.post("/autotag/")
+def auto_tag(data: AutoTagSchema, current_user: models.User = Depends(get_current_user)):
     text = data.content
     if not text or len(text.split()) < 5:
         return {"tags": []}
@@ -260,7 +449,7 @@ def auto_tag(data: AutoTagSchema):
     # 1. Extract candidates (1-gram and 2-grams)
     # Stop words are removed by default English list
     try:
-        vectorizer = CountVectorizer(ngram_range=(1, 2), stop_words='english', top_max_features=20)
+        vectorizer = CountVectorizer(ngram_range=(1, 2), stop_words='english', max_features=20)
         X = vectorizer.fit_transform([text])
         candidates = vectorizer.get_feature_names_out()
     except ValueError:
@@ -283,3 +472,58 @@ def auto_tag(data: AutoTagSchema):
     keywords.reverse()
 
     return {"tags": keywords}
+
+# 7. Export Data
+@app.get("/export/json")
+def export_json(current_user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """
+    Export all user data as JSON.
+    Includes entries, habits, and reminders.
+    """
+    # Get all user data
+    entries = db.query(models.Entry).filter(models.Entry.user_id == current_user.id).all()
+    habits = db.query(models.Habit).filter(
+        models.Habit.user_id == current_user.id,
+        models.Habit.is_active == True
+    ).all()
+    reminders = db.query(models.Reminder).filter(models.Reminder.user_id == current_user.id).all()
+
+    # Format data for export
+    export_data = {
+        "export_date": datetime.utcnow().isoformat(),
+        "user": {
+            "id": current_user.id,
+            "email": current_user.email
+        },
+        "entries": [
+            {
+                "id": e.id,
+                "title": e.title,
+                "content": e.content,
+                "folder": e.folder,
+                "mood": e.mood,
+                "date": e.date.isoformat(),
+                "completed_habits": [{"id": h.id, "name": h.name, "icon": h.icon} for h in e.completed_habits]
+            }
+            for e in entries
+        ],
+        "habits": [
+            {
+                "id": h.id,
+                "name": h.name,
+                "icon": h.icon
+            }
+            for h in habits
+        ],
+        "reminders": [
+            {
+                "id": r.id,
+                "text": r.text,
+                "date": r.date,
+                "completed": r.completed
+            }
+            for r in reminders
+        ]
+    }
+
+    return export_data

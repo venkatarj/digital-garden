@@ -2,8 +2,9 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import {
   BookOpen, Calendar as CalIcon, Brain, Folder, Plus, Clock, Trash2, ChevronDown,
-  Lock, Unlock, ChevronsLeft, ChevronsRight, Search, Menu, BarChart2, Sun, Moon
+  Lock, Unlock, ChevronsLeft, ChevronsRight, Search, Menu, BarChart2, Sun, Moon, Download, LogOut
 } from 'lucide-react';
+import { GoogleOAuthProvider } from '@react-oauth/google';
 
 import Login from './features/auth/Login';
 import JournalView from './features/journal/JournalView';
@@ -17,7 +18,12 @@ const API_URL = import.meta.env.VITE_API_URL || `http://${window.location.hostna
 // --- AXIOS CONFIG ---
 axios.interceptors.request.use(config => {
   const token = localStorage.getItem('token');
-  if (token) config.headers['x-token'] = token;
+  if (token) {
+    // Use Authorization: Bearer <token> for JWT
+    config.headers['Authorization'] = `Bearer ${token}`;
+    // Keep x-token for backward compatibility during migration
+    config.headers['x-token'] = token;
+  }
   return config;
 });
 
@@ -38,12 +44,21 @@ function App() {
   const [entryToEdit, setEntryToEdit] = useState(null);
   const [appBackground, setAppBackground] = useState('#F5F7F5'); // Legacy, will override with theme
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
-  const [theme, setTheme] = useState('light'); // Theme State
+  const [theme, setTheme] = useState(() => {
+    // Load theme from localStorage on mount
+    const savedTheme = localStorage.getItem('theme');
+    return savedTheme || 'light';
+  });
+
+  // Persist theme to localStorage
+  useEffect(() => {
+    localStorage.setItem('theme', theme);
+  }, [theme]);
 
   const fetchData = async () => {
     try {
       const [eRes, rRes] = await Promise.all([
-        axios.get(`${API_URL}/entries/`),
+        axios.get(`${API_URL}/entries/?limit=100`),
         axios.get(`${API_URL}/reminders/`)
       ]);
       setEntries(eRes.data);
@@ -59,11 +74,45 @@ function App() {
     }
   };
 
+  const handleExportData = async () => {
+    try {
+      const response = await axios.get(`${API_URL}/export/json`);
+      const data = response.data;
+
+      // Create JSON blob
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+
+      // Create download link
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `life-os-backup-${new Date().toISOString().split('T')[0]}.json`;
+      document.body.appendChild(link);
+      link.click();
+
+      // Cleanup
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Export failed:', error);
+      alert('Failed to export data. Please try again.');
+    }
+  };
+
+  const handleLogout = () => {
+    // Clear authentication data
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    // Reset authentication state (will redirect to login)
+    setIsAuthenticated(false);
+  };
+
   useEffect(() => {
     if (isAuthenticated) {
       fetchData();
 
       // Connect to WebSocket
+      /* DISABLED
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       let host = window.location.host; // Default to current host (production)
 
@@ -85,6 +134,7 @@ function App() {
       ws.onclose = () => console.log("❌ WebSocket Disconnected");
 
       return () => ws.close();
+      */
     }
   }, [isAuthenticated]);
 
@@ -135,11 +185,18 @@ function App() {
   };
 
   const navItemStyle = (isActive) => ({
-    padding: '10px', cursor: 'pointer', borderRadius: '8px', display: 'flex', gap: '10px', alignItems: 'center',
-    background: isActive ? '#f0fdf4' : 'transparent', color: isActive ? '#7C9A86' : '#718096', fontWeight: isActive ? 'bold' : 'normal', marginBottom: '5px'
+    padding: '8px 12px', cursor: 'pointer', borderRadius: 'var(--radius-md)', display: 'flex', gap: '10px', alignItems: 'center',
+    background: isActive ? 'var(--bg-primary)' : 'transparent',
+    color: isActive ? 'var(--contrast-text)' : 'var(--muted-text)',
+    fontWeight: isActive ? '600' : '500', marginBottom: '4px',
+    fontSize: '14px', transition: 'all 0.2s ease',
+    boxShadow: isActive ? 'var(--shadow-soft)' : 'none'
   });
 
-  if (!isAuthenticated) return <Login onLogin={() => setIsAuthenticated(true)} />;
+  // Auth view rendering
+  if (!isAuthenticated) {
+    return <Login onLogin={() => setIsAuthenticated(true)} />;
+  }
 
   return (
     <div style={{
@@ -161,44 +218,60 @@ function App() {
           {!isSidebarCollapsed && <span style={{ fontFamily: 'var(--font-mono)', letterSpacing: '1px', fontSize: '16px' }}>LIFE OS</span>}
         </h2>
 
-        <div onClick={() => setView('journal')} style={{ ...navItemStyle(view === 'journal'), background: view === 'journal' ? 'var(--border-color)' : 'transparent', color: view === 'journal' ? 'var(--contrast-text)' : 'var(--muted-text)', justifyContent: isSidebarCollapsed ? 'center' : 'flex-start' }}>
-          <BookOpen size={18} /> {!isSidebarCollapsed && "JOURNAL"}
+        <div onClick={() => setView('journal')} style={{ ...navItemStyle(view === 'journal') }} className="sidebar-item">
+          <BookOpen size={18} /> {!isSidebarCollapsed && "Journal"}
         </div>
-        <div onClick={() => setView('calendar')} style={{ ...navItemStyle(view === 'calendar'), background: view === 'calendar' ? 'var(--border-color)' : 'transparent', color: view === 'calendar' ? 'var(--contrast-text)' : 'var(--muted-text)', justifyContent: isSidebarCollapsed ? 'center' : 'flex-start' }}>
-          <CalIcon size={18} /> {!isSidebarCollapsed && "CALENDAR"}
+        <div onClick={() => setView('calendar')} style={{ ...navItemStyle(view === 'calendar') }} className="sidebar-item">
+          <CalIcon size={18} /> {!isSidebarCollapsed && "Calendar"}
         </div>
-        <div onClick={() => setView('insights')} style={{ ...navItemStyle(view === 'insights'), background: view === 'insights' ? 'var(--border-color)' : 'transparent', color: view === 'insights' ? 'var(--contrast-text)' : 'var(--muted-text)', justifyContent: isSidebarCollapsed ? 'center' : 'flex-start' }}>
-          <BarChart2 size={18} /> {!isSidebarCollapsed && "INSIGHTS"}
+        <div onClick={() => setView('insights')} style={{ ...navItemStyle(view === 'insights') }} className="sidebar-item">
+          <BarChart2 size={18} /> {!isSidebarCollapsed && "Insights"}
         </div>
 
         {/* FOLDERS */}
         {!isSidebarCollapsed && (
           <>
-            <div style={{ marginTop: '30px', marginBottom: '10px', fontSize: '10px', fontWeight: 'bold', color: 'var(--muted-text)', fontFamily: 'var(--font-mono)', letterSpacing: '1px' }}>FOLDERS</div>
-            {folders.map(folder => (
+            <div style={{ marginTop: '24px', marginBottom: '8px', paddingLeft: '12px', fontSize: '13px', fontWeight: '600', color: 'var(--muted-text)' }}>Folders</div>
+            {folders.filter(f => f !== 'Journal').map(folder => (
               <div key={folder} onClick={() => { setActiveFolder(folder); setView('journal'); }}
                 style={{
-                  padding: '8px 10px', cursor: 'pointer', borderRadius: '4px', fontSize: '13px',
+                  padding: '8px 12px', cursor: 'pointer', borderRadius: 'var(--radius-md)', fontSize: '14px', fontWeight: '500',
                   color: activeFolder === folder ? 'var(--contrast-text)' : 'var(--muted-text)',
-                  background: activeFolder === folder ? 'var(--border-color)' : 'transparent',
-                  marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '8px',
-                  fontFamily: 'var(--font-mono)'
-                }}>
+                  background: activeFolder === folder ? 'var(--bg-primary)' : 'transparent',
+                  marginBottom: '2px', display: 'flex', alignItems: 'center', gap: '10px',
+                  boxShadow: activeFolder === folder ? 'var(--shadow-soft)' : 'none'
+                }} className="sidebar-item">
                 <Folder size={14} /> {folder}
               </div>
             ))}
             {isAddingFolder ? (
-              <input autoFocus placeholder="NAME..." value={newFolderName} onChange={e => setNewFolderName(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleAddFolder()} onBlur={() => setIsAddingFolder(false)}
-                style={{ width: '100%', padding: '8px', marginTop: '5px', background: 'transparent', border: '1px solid var(--muted-text)', color: 'var(--contrast-text)', fontFamily: 'var(--font-mono)', fontSize: '12px', outline: 'none' }} />
+              <input autoFocus placeholder="Name..." value={newFolderName} onChange={e => setNewFolderName(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleAddFolder()} onBlur={() => setIsAddingFolder(false)}
+                style={{ width: '100%', padding: '8px', marginTop: '5px', background: 'transparent', border: '1px solid var(--muted-text)', color: 'var(--contrast-text)', fontFamily: 'var(--font-mono)', fontSize: '13px', outline: 'none' }} />
             ) : (
-              <div onClick={() => setIsAddingFolder(true)} style={{ padding: '8px 10px', cursor: 'pointer', color: 'var(--accent-primary)', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '5px', fontFamily: 'var(--font-mono)', marginTop: '5px' }}><Plus size={14} /> NEW FOLDER</div>
+              <div onClick={() => setIsAddingFolder(true)} className="sidebar-item" style={{ padding: '8px 12px', borderRadius: 'var(--radius-md)', cursor: 'pointer', color: 'var(--muted-text)', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '5px', marginTop: '8px', border: '1px dashed var(--border-color)', justifyContent: 'center' }}>
+                <Plus size={14} /> New Folder
+              </div>
             )}
           </>
         )}
 
-        {/* THEME TOGGLE & COLLAPSE */}
+        {/* EXPORT DATA, LOGOUT, THEME TOGGLE & COLLAPSE */}
         <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: '10px' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: isSidebarCollapsed ? 'center' : 'space-between', paddingTop: '20px', borderTop: '1px solid var(--border-color)' }}>
+            <button onClick={handleExportData} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--muted-text)', display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <Download size={18} />
+              {!isSidebarCollapsed && <span style={{ fontFamily: 'var(--font-mono)', fontSize: '12px' }}>EXPORT DATA</span>}
+            </button>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: isSidebarCollapsed ? 'center' : 'space-between' }}>
+            <button onClick={handleLogout} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--muted-text)', display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <LogOut size={18} />
+              {!isSidebarCollapsed && <span style={{ fontFamily: 'var(--font-mono)', fontSize: '12px' }}>LOGOUT</span>}
+            </button>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: isSidebarCollapsed ? 'center' : 'space-between', paddingTop: '10px' }}>
             <button onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--muted-text)', display: 'flex', alignItems: 'center', gap: '10px' }}>
               {theme === 'light' ? <Moon size={18} /> : <Sun size={18} />}
               {!isSidebarCollapsed && <span style={{ fontFamily: 'var(--font-mono)', fontSize: '12px' }}>{theme === 'light' ? 'DARK MODE' : 'LIGHT MODE'}</span>}
@@ -271,4 +344,31 @@ function App() {
   );
 }
 
-export default App;
+// Wrap entire app with Google OAuth Provider
+const AppWithAuth = () => {
+  const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+
+  if (!clientId) {
+    console.error('VITE_GOOGLE_CLIENT_ID not set!');
+    return (
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        height: '100vh', fontFamily: 'system-ui', color: '#e53e3e'
+      }}>
+        <div style={{ textAlign: 'center' }}>
+          <h2>Configuration Error</h2>
+          <p>VITE_GOOGLE_CLIENT_ID environment variable not set.</p>
+          <p>Please add it to your .env file.</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <GoogleOAuthProvider clientId={clientId}>
+      <App />
+    </GoogleOAuthProvider>
+  );
+};
+
+export default AppWithAuth;
