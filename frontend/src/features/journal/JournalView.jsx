@@ -265,15 +265,14 @@ const JournalViewContent = ({ isPrivate, setIsPrivate, setAppBackground }) => {
 
     // --- RENDER ---
     return (
-        <div className={`journal-view-container ${isEditorFocused ? 'focus-mode' : ''} ${isThoughtSettled ? 'thought-settled' : ''}`}
+        <div className="journal-layout"
             style={{
-                display: 'flex', height: '100%', gap: '0',
+                '--mood-bg': moodThemes[selectedMood] || '#F5F7F5',
                 '--active-mood-color': moodThemes[previewMood || selectedMood] || 'transparent'
             }}>
 
-            {/* --- MIDDLE COLUMN: ACCORDION SIDEBAR --- */}
-            <div className="sidebar-transition sidebar-left"
-                style={{ width: `${middleWidth}px`, borderRight: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', flexShrink: 0, background: 'var(--bg-secondary)', overflow: 'hidden' }}>
+            {/* --- LEFT: ENTRY LIST SIDEBAR --- */}
+            <aside className="entry-sidebar">
                 <Sidebar
                     entries={entries.filter(e => !optimisticDeletedIds.includes(e.id))}
                     folders={folders}
@@ -287,15 +286,10 @@ const JournalViewContent = ({ isPrivate, setIsPrivate, setAppBackground }) => {
                     onEntryClick={loadEntryData}
                     onDeleteEntry={handleDelete}
                 />
-            </div>
+            </aside>
 
-            {/* RESIZER 1 */}
-            <div onMouseDown={startResizeMiddle} className="resizer">
-                <div className="resizer-line"></div>
-            </div>
-
-            {/* --- RIGHT COLUMN: EDITOR --- */}
-            <div className={`app-container ${isTyping || isEditorFocused ? 'zen-mode' : ''}`}
+            {/* --- CENTER: EDITOR --- */}
+            <main className={`editor-main ${isTyping || isEditorFocused ? 'zen-mode' : ''} ${isEditorFocused ? 'focus-mode' : ''} ${isThoughtSettled ? 'thought-settled' : ''}`}
                 style={{
                     flex: 1, margin: '0 20px', display: 'flex', flexDirection: 'column', height: '100%', minWidth: '400px',
                     overflowY: 'auto' /* Enable independent scrolling */
@@ -559,16 +553,10 @@ const JournalViewContent = ({ isPrivate, setIsPrivate, setAppBackground }) => {
                         </button>
                     </div>
                 )}
-            </div>
+            </main>
 
-            {/* RESIZER 2 */}
-            <div onMouseDown={startResizeRight} className="resizer">
-                <div className="resizer-line"></div>
-            </div>
-
-            {/* --- UNIFIED LIFE PANEL (RIGHT RAIL) --- */}
-            <div className="sidebar-transition sidebar-right"
-                style={{ width: `${rightWidth}px`, paddingLeft: '10px', display: 'flex', flexDirection: 'column', borderLeft: '1px solid var(--border-color)', background: 'var(--bg-secondary)', height: '100%', flexShrink: 0 }}>
+            {/* --- RIGHT: ADAPTIVE PANEL --- */}
+            <aside className="adaptive-panel">
 
                 {/* 1. QUICK CHECK-IN (TOP) */}
                 {/* 1. QUICK NOTE & HABITS */}
@@ -671,7 +659,8 @@ const JournalViewContent = ({ isPrivate, setIsPrivate, setAppBackground }) => {
                         onDateSelect={setSelectedDate}
                     />
                 </div>
-            </div>
+            </aside>
+
             {/* --- MODALS --- */}
             <DeleteConfirmModal
                 isOpen={deleteModal.isOpen}
