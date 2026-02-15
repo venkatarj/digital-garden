@@ -12,6 +12,7 @@ import CalendarPanel from './components/CalendarPanel';
 import QuickCheckIn from './components/QuickCheckIn';
 import DeleteConfirmModal from './components/DeleteConfirmModal';
 import ToastNotification from './components/ToastNotification';
+import { JournalProvider, useJournal } from './context/JournalContext';
 
 // Helper: Animate numbers
 const CountUp = ({ end, duration = 1000 }) => {
@@ -33,95 +34,61 @@ const CountUp = ({ end, duration = 1000 }) => {
     return <span>{count}</span>;
 };
 
+// Main wrapper component with Context Provider
 const JournalView = ({ entries, folders, entryToEdit, activeFolder: initialActiveFolder, isPrivate, setIsPrivate, onRefresh, setAppBackground }) => {
-    // Editor State
-    const [id, setId] = useState(null);
-    const [title, setTitle] = useState('');
-    const [content, setContent] = useState('');
+    return (
+        <JournalProvider
+            entries={entries}
+            folders={folders}
+            onRefresh={onRefresh}
+            initialEntry={entryToEdit}
+            initialFolder={initialActiveFolder}
+        >
+            <JournalViewContent
+                isPrivate={isPrivate}
+                setIsPrivate={setIsPrivate}
+                setAppBackground={setAppBackground}
+            />
+        </JournalProvider>
+    );
+};
 
-    const [selectedMood, setSelectedMood] = useState('😐');
-    const [previewMood, setPreviewMood] = useState(null); // New: For hover preview
-    const [activeHint, setActiveHint] = useState(null); // New: Smart tag hint
-    const [tags, setTags] = useState('');
-    const [currentFolder, setCurrentFolder] = useState(initialActiveFolder || 'Journal'); // Local folder state for Pill
+// Content component (to be refactored in later phases)
+const JournalViewContent = ({ isPrivate, setIsPrivate, setAppBackground }) => {
+    // Access context
+    const journal = useJournal();
 
-    // Navigation State
-    const [expandedFolders, setExpandedFolders] = useState([initialActiveFolder || 'Journal']); // For Accordion
-    const [selectedDate, setSelectedDate] = useState(null); // Active Recall: Date Filter
+    // Destructure what we need from context
+    const {
+        id, title, content, selectedMood, tags, currentFolder,
+        expandedFolders, selectedDate,
+        isEditorFocused, saveStatus, isTyping, isThoughtSettled,
+        showGrowthAnim, ghostTitle, showHelper, showTags,
+        allHabits, completedHabitIds,
+        suggestedTags, activeHint, isAnalyzing,
+        activeOverlay, currentQuestion,
+        isReflecting, learning, reflectionPrompt,
+        entries, folders,
+        setTitle, setContent, setSelectedMood, setTags, setCurrentFolder,
+        setSelectedDate, setIsEditorFocused, setShowTags,
+        setActiveHint, setActiveOverlay, setCurrentQuestion,
+        setLearning, setReflectionPrompt,
+        loadEntryData, resetEditor, saveEntry, deleteEntry,
+        toggleFolder, toggleHabit, handleAddHabit, handleDeleteHabit,
+        handleAutoTag, handleFinishReflection
+    } = journal;
 
-    // --- MODAL & TOAST ---
+    // Local UI state that's NOT in context (component-specific)
+    const [previewMood, setPreviewMood] = useState(null); // Mood hover preview
     const [deleteModal, setDeleteModal] = useState({ isOpen: false, entryId: null, entryTitle: '' });
     const [isDeleting, setIsDeleting] = useState(false);
     const [toast, setToast] = useState({ isVisible: false, message: '', type: 'success', id: 0 });
     const [optimisticDeletedIds, setOptimisticDeletedIds] = useState([]);
-
-    // Smart Feature State
-    const [suggestedTags, setSuggestedTags] = useState([]);
-    const [isReflecting, setIsReflecting] = useState(false);
-    const [learning, setLearning] = useState('');
-    const [reflectionPrompt, setReflectionPrompt] = useState('');
-    const [isAnalyzing, setIsAnalyzing] = useState(false);
-
-    // Animation/UI State
-    const [isEditorFocused, setIsEditorFocused] = useState(false);
-    const [isTyping, setIsTyping] = useState(false);
-    const [isThoughtSettled, setIsThoughtSettled] = useState(true);
-    const [saveStatus, setSaveStatus] = useState('idle');
-    const [showGrowthAnim, setShowGrowthAnim] = useState(false);
-    const [ghostTitle, setGhostTitle] = useState('');
-    const [showHelper, setShowHelper] = useState(false);
-    const [showTags, setShowTags] = useState(false);
-    const typingTimeoutRef = useRef(null);
-
-    const [searchTerm, setSearchTerm] = useState('');
-
-    // --- HABIT STATE ---
-    const [allHabits, setAllHabits] = useState([]);
-    const [completedHabitIds, setCompletedHabitIds] = useState([]);
     const [isManagingHabits, setIsManagingHabits] = useState(false);
     const [newHabitName, setNewHabitName] = useState('');
     const [newHabitIcon, setNewHabitIcon] = useState('⚡️');
-    const [isInsightsOpen, setIsInsightsOpen] = useState(false); // For Soft Dropdown
-
-    // NOTE: In a real app, API_URL should be imported from a config/context
-    const API_URL = import.meta.env.VITE_API_URL || `http://${window.location.hostname}:8000`;
-
-    // Fetch Habits
-    useEffect(() => {
-        fetchHabits();
-    }, []);
-
-    const fetchHabits = async () => {
-        try {
-            const res = await axios.get(`${API_URL}/habits/`);
-            setAllHabits(res.data);
-        } catch (e) { console.error("Failed to fetch habits"); }
-    };
-
-    const toggleHabit = (habitId) => {
-        if (completedHabitIds.includes(habitId)) {
-            setCompletedHabitIds(prev => prev.filter(id => id !== habitId));
-        } else {
-            setCompletedHabitIds(prev => [...prev, habitId]);
-        }
-    };
-
-    const handleAddHabit = async () => {
-        if (!newHabitName) return;
-        try {
-            await axios.post(`${API_URL}/habits/`, { name: newHabitName, icon: newHabitIcon });
-            setNewHabitName('');
-            fetchHabits();
-        } catch (e) { console.error(e); }
-    };
-
-    const handleDeleteHabit = async (habitId) => {
-        if (!window.confirm("Delete this habit?")) return;
-        try {
-            await axios.delete(`${API_URL}/habits/${habitId}`);
-            fetchHabits();
-        } catch (e) { console.error(e); }
-    };
+    const [isInsightsOpen, setIsInsightsOpen] = useState(false);
+    const [searchTerm, setSearchTerm] = useState('');
 
     const moodThemes = {
         '😄': '#FFF9C4', '🙂': '#DCEDC8', '😐': '#F5F7F5', '😞': '#E1F5FE', '😡': '#FFEBEE',
@@ -155,9 +122,6 @@ const JournalView = ({ entries, folders, entryToEdit, activeFolder: initialActiv
         ]
     };
 
-    const [activeOverlay, setActiveOverlay] = useState(null); // 'reflect', 'vent', 'gratitude' or null
-    const [currentQuestion, setCurrentQuestion] = useState('');
-
     const openOverlay = (type) => {
         const questions = DEEP_DIVE_QUESTIONS[type];
         const randomQ = questions[Math.floor(Math.random() * questions.length)];
@@ -181,155 +145,14 @@ const JournalView = ({ entries, folders, entryToEdit, activeFolder: initialActiv
     const prevEntry = currentIndex !== -1 && currentIndex < currentContextEntries.length - 1 ? currentContextEntries[currentIndex + 1] : null;
     const nextEntry = currentIndex !== -1 && currentIndex > 0 ? currentContextEntries[currentIndex - 1] : null;
 
-    // --- EFFECTS ---
+    // Local effects (not in context)
 
-    // Sync folder from App.jsx (fixes folder navigation bug)
-    useEffect(() => {
-        if (initialActiveFolder && initialActiveFolder !== currentFolder) {
-            setCurrentFolder(initialActiveFolder);
-            // Expand the folder when navigating to it
-            if (!expandedFolders.includes(initialActiveFolder)) {
-                setExpandedFolders([initialActiveFolder]);
-            }
-        }
-    }, [initialActiveFolder]);
-
-    // Sync background
+    // Sync background color to parent
     useEffect(() => {
         setAppBackground(moodThemes[selectedMood] || '#F5F7F5');
-    }, [selectedMood]);
+    }, [selectedMood, setAppBackground]);
 
-    // Load Entry
-    useEffect(() => {
-        if (entryToEdit) {
-            loadEntryData(entryToEdit);
-        }
-    }, [entryToEdit]); // Don't reset if entryToEdit is null, unless explicit? 
-    // actually usually we want to reset if entryToEdit becomes null, but here we might just stay in "New" mode.
-    // The parent passes null when switching views, but maybe we just stick to manual reset.
-
-    const loadEntryData = (entry) => {
-        setId(entry.id);
-        setTitle(entry.title);
-        setContent(entry.content);
-        setSelectedMood(entry.mood);
-        setCurrentFolder(entry.folder);
-        // Load completed habits (assuming backend returns them)
-        if (entry.completed_habits) {
-            setCompletedHabitIds(entry.completed_habits.map(h => h.id));
-        } else {
-            setCompletedHabitIds([]); // Reset if new/legacy
-        }
-        setCurrentFolder(entry.folder); // Update pill to match entry
-
-        // Ensure the folder containing this entry is expanded
-        if (!expandedFolders.includes(entry.folder)) {
-            setExpandedFolders(prev => [...prev, entry.folder]);
-        }
-
-        const match = entry.content.match(/\[Tags: (.*?)\]/);
-        if (match) {
-            setTags(match[1]);
-            setContent(entry.content.replace(match[0], '').trim());
-        } else {
-            setTags('');
-        }
-    };
-
-    const resetEditor = () => {
-        setId(null); setTitle(''); setContent('');
-        setSelectedMood('😐'); setTags('');
-        setCompletedHabitIds([]); // Reset habits
-        // Keep currentFolder as is (sticky selection)
-    };
-
-
-    const toggleFolder = (folder) => {
-        if (expandedFolders.includes(folder)) {
-            setExpandedFolders([]);
-        } else {
-            setExpandedFolders([folder]);
-        }
-    };
-
-    // Auto-close accordion after 10s of inactivity
-    useEffect(() => {
-        if (expandedFolders.length === 0) return;
-        const timer = setTimeout(() => {
-            setExpandedFolders([]);
-        }, 10000);
-        return () => clearTimeout(timer);
-    }, [expandedFolders]);
-
-    // Life OS: "Thought Settling" Engine
-    useEffect(() => {
-        if (isEditorFocused) {
-            setIsTyping(true);
-            setIsThoughtSettled(false);
-            if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-
-            // The "Settling" Phase
-            typingTimeoutRef.current = setTimeout(() => {
-                setIsTyping(false);
-                setIsThoughtSettled(true); // Thoughts have settled
-                setShowHelper(true);
-            }, 2000); // 2 seconds of silence = settled thought
-        } else {
-            setIsTyping(false);
-            setIsThoughtSettled(true);
-            setShowHelper(false);
-        }
-        return () => clearTimeout(typingTimeoutRef.current);
-    }, [content, isEditorFocused]);
-
-    // Ghost Title
-    useEffect(() => {
-        if (!title && content.length > 5) {
-            const words = content.split(' ').slice(0, 3).join(' ');
-            setGhostTitle(words + '...');
-        } else {
-            setGhostTitle('');
-        }
-    }, [title, content]);
-
-    // Smart Tags
-    useEffect(() => {
-        const KEYWORDS = {
-            'work': ['meeting', 'project', 'boss', 'deadline', 'email'],
-            'health': ['gym', 'run', 'sleep', 'tired', 'sick', 'doctor'],
-            'social': ['friend', 'party', 'dinner', 'family', 'date'],
-            'idea': ['think', 'create', 'write', 'plan', 'concept']
-        };
-        const lowerContent = content.toLowerCase();
-        const newSuggestions = [];
-        Object.keys(KEYWORDS).forEach(tag => {
-            if (KEYWORDS[tag].some(k => lowerContent.includes(k))) {
-                if (!tags.includes(tag)) newSuggestions.push(tag);
-            }
-        });
-        setSuggestedTags(newSuggestions);
-
-        // Life OS: Smart Hint Logic (Full Scan)
-        const words = lowerContent.split(/[\s\n]+/).map(w => w.replace(/[^a-z0-9]/g, ''));
-        let foundTag = null;
-
-        // Scan ALL content to find first untagged keyword
-        for (const word of words) {
-            if (!word) continue;
-            const tag = Object.keys(KEYWORDS).find(k => KEYWORDS[k].includes(word));
-            if (tag && !tags.includes(tag)) {
-                foundTag = tag;
-                break;
-            }
-        }
-
-        setActiveHint(foundTag);
-    }, [content, tags]);
-
-    // --- ACTIONS ---
-
-    // insertPrompt replaced by openOverlay above
-
+    // Local helper functions (not in context)
     const handleAutoTitle = () => {
         if (!content) return;
         const words = content.split(' ').slice(0, 5).join(' ');
@@ -340,78 +163,12 @@ const JournalView = ({ entries, folders, entryToEdit, activeFolder: initialActiv
         if (e.key === 'Tab' && ghostTitle) {
             e.preventDefault();
             setTitle(ghostTitle);
-            setGhostTitle('');
         }
     };
 
-    // Autosave Timer ref
-    const autosaveTimerRef = useRef(null);
-
-    // Contextual Save (Create or Update)
-    const saveEntry = async (silent = true) => {
-        if (!content && !title) return;
-
-        if (!silent) setIsAnalyzing(true);
-        if (!silent) setSaveStatus('saving');
-        // Silent save doesn't change status to 'saving' visibly unless we want a small indicator
-
-        const finalContent = tags ? `${content}\n\n[Tags: ${tags}]` : content;
-        const entryPayload = {
-            title: title || 'Untitled',
-            content: finalContent,
-            folder: currentFolder,
-            mood: selectedMood,
-            completed_habit_ids: completedHabitIds
-        };
-
-        try {
-            if (id) {
-                await axios.put(`${API_URL}/entries/${id}`, entryPayload);
-            } else {
-                const res = await axios.post(`${API_URL}/entries/`, entryPayload);
-                setId(res.data.id); // Switch to Update mode
-            }
-
-            if (!silent) {
-                setShowGrowthAnim(true);
-            }
-            setSaveStatus('saved');
-            onRefresh();
-
-            if (!silent) {
-                setTimeout(() => {
-                    setSaveStatus('idle');
-                    setIsReflecting(true);
-                }, 1200);
-            } else {
-                // Clear 'saved' after 2s for cleaner UI
-                setTimeout(() => setSaveStatus('idle'), 2000);
-            }
-        } catch (e) { console.error(e); setSaveStatus('error'); }
-    };
-
-    // Autosave Effect
-    useEffect(() => {
-        if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
-        if (content || title) {
-            setSaveStatus('saving-quiet'); // subtle indicator
-            autosaveTimerRef.current = setTimeout(() => {
-                saveEntry(true);
-            }, 2000); // 2s debounce
-        }
-        return () => clearTimeout(autosaveTimerRef.current);
-    }, [content, title, selectedMood, tags, currentFolder]);
-
-    // Manual Trigger (for "Done" button if we add one)
     const handleSaveEntry = () => saveEntry(false);
 
-    const handleFinishReflection = async () => {
-        setIsReflecting(false);
-        setShowGrowthAnim(false);
-        resetEditor();
-        onRefresh();
-    };
-
+    // Local delete modal handlers (uses local deleteModal state)
     const handleDelete = (e, entryId) => {
         if (e) e.stopPropagation();
         const entry = entries.find(e => e.id === entryId);
@@ -427,52 +184,18 @@ const JournalView = ({ entries, folders, entryToEdit, activeFolder: initialActiv
         if (!idToDelete) return;
 
         setIsDeleting(true);
-        // Optimistic UI Update
         setOptimisticDeletedIds(prev => [...prev, idToDelete]);
 
         try {
-            await axios.delete(`${API_URL}/entries/${idToDelete}`);
+            await deleteEntry(idToDelete); // Use context function
             setToast({ isVisible: true, message: 'Entry deleted successfully', type: 'success', id: Date.now() });
-
-            if (id === idToDelete) resetEditor();
-            onRefresh();
         } catch (e) {
             console.error(e);
-            // Rollback UI
             setOptimisticDeletedIds(prev => prev.filter(pid => pid !== idToDelete));
             setToast({ isVisible: true, message: 'Failed to delete entry', type: 'error', id: Date.now() });
         } finally {
             setIsDeleting(false);
             setDeleteModal({ isOpen: false, entryId: null, entryTitle: '' });
-        }
-    };
-
-
-    const handleAutoTag = async () => {
-        if (!content || content.length < 20) return;
-        setIsAnalyzing(true);
-        try {
-            const token = localStorage.getItem('token');
-            const res = await axios.post(`${API_URL}/autotag/`, { content }, {
-                headers: { 'x-token': token }
-            });
-            const newTags = res.data.tags;
-            if (newTags && newTags.length > 0) {
-                // Determine new unique tags
-                const currentTags = tags ? tags.split(',').map(t => t.trim()) : [];
-                const addedTags = newTags.filter(t => !currentTags.includes(t));
-
-                if (addedTags.length > 0) {
-                    setTags(prev => prev ? `${prev}, ${addedTags.join(', ')}` : addedTags.join(', '));
-                    // Show a small success toast or indicator?
-                    // For now, expand the tags view
-                    setShowTags(true);
-                }
-            }
-        } catch (e) {
-            console.error("Auto-tag failed", e);
-        } finally {
-            setIsAnalyzing(false);
         }
     };
 
