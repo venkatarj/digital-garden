@@ -357,7 +357,7 @@ export const JournalProvider = ({ children, entries, folders, onRefresh, initial
         // Actions
         loadEntryData, resetEditor, saveEntry, deleteEntry,
         toggleFolder, toggleHabit, handleAddHabit, handleDeleteHabit,
-        handleAutoTag, handleFinishReflection
+        handleAutoTag, handleFinishReflection, onRefresh
     };
 
     return (

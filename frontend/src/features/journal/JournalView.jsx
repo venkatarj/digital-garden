@@ -1,38 +1,16 @@
-import React, { useState, useEffect, useRef } from 'react';
-import axios from 'axios';
+import React, { useState, useEffect } from 'react';
 import {
     Folder, Lock, Unlock, Clock, Sparkles, Smile, Sun, Meh, Moon, Frown,
     Sprout, Tag, Save, CheckCircle, Wand2, Trash2, ChevronLeft, ChevronRight,
-    Plus, Search, FileText, Settings, BarChart2, ChevronDown, ChevronUp
+    Plus, Search, FileText
 } from 'lucide-react';
 import { analyzeEntry } from '../../ai/SemanticEngine';
 import MoodSelector from './components/MoodSelector';
 import Sidebar from './components/Sidebar';
-import CalendarPanel from './components/CalendarPanel';
-import QuickCheckIn from './components/QuickCheckIn';
 import DeleteConfirmModal from './components/DeleteConfirmModal';
 import ToastNotification from './components/ToastNotification';
+import AdaptiveRightPanel from './components/AdaptiveRightPanel';
 import { JournalProvider, useJournal } from './context/JournalContext';
-
-// Helper: Animate numbers
-const CountUp = ({ end, duration = 1000 }) => {
-    const [count, setCount] = useState(0);
-    useEffect(() => {
-        let start = 0;
-        const increment = end / (duration / 16);
-        const timer = setInterval(() => {
-            start += increment;
-            if (start >= end) {
-                setCount(end);
-                clearInterval(timer);
-            } else {
-                setCount(Math.ceil(start));
-            }
-        }, 16);
-        return () => clearInterval(timer);
-    }, [end, duration]);
-    return <span>{count}</span>;
-};
 
 // Main wrapper component with Context Provider
 const JournalView = ({ entries, folders, entryToEdit, activeFolder: initialActiveFolder, isPrivate, setIsPrivate, onRefresh, setAppBackground }) => {
@@ -64,7 +42,6 @@ const JournalViewContent = ({ isPrivate, setIsPrivate, setAppBackground }) => {
         expandedFolders, selectedDate,
         isEditorFocused, saveStatus, isTyping, isThoughtSettled,
         showGrowthAnim, ghostTitle, showHelper, showTags,
-        allHabits, completedHabitIds,
         suggestedTags, activeHint, isAnalyzing,
         activeOverlay, currentQuestion,
         isReflecting, learning, reflectionPrompt,
@@ -74,7 +51,7 @@ const JournalViewContent = ({ isPrivate, setIsPrivate, setAppBackground }) => {
         setActiveHint, setActiveOverlay, setCurrentQuestion,
         setLearning, setReflectionPrompt,
         loadEntryData, resetEditor, saveEntry, deleteEntry,
-        toggleFolder, toggleHabit, handleAddHabit, handleDeleteHabit,
+        toggleFolder,
         handleAutoTag, handleFinishReflection
     } = journal;
 
@@ -84,10 +61,6 @@ const JournalViewContent = ({ isPrivate, setIsPrivate, setAppBackground }) => {
     const [isDeleting, setIsDeleting] = useState(false);
     const [toast, setToast] = useState({ isVisible: false, message: '', type: 'success', id: 0 });
     const [optimisticDeletedIds, setOptimisticDeletedIds] = useState([]);
-    const [isManagingHabits, setIsManagingHabits] = useState(false);
-    const [newHabitName, setNewHabitName] = useState('');
-    const [newHabitIcon, setNewHabitIcon] = useState('⚡️');
-    const [isInsightsOpen, setIsInsightsOpen] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
 
     const moodThemes = {
@@ -198,70 +171,6 @@ const JournalViewContent = ({ isPrivate, setIsPrivate, setAppBackground }) => {
             setDeleteModal({ isOpen: false, entryId: null, entryTitle: '' });
         }
     };
-
-    // --- RENDER ---
-    // --- RESIZE STATE ---
-    const [middleWidth, setMiddleWidth] = useState(260);
-    const [rightWidth, setRightWidth] = useState(280);
-    const isDraggingMiddle = useRef(false);
-    const isDraggingRight = useRef(false);
-
-    const handleQuickAdd = async (text) => {
-        try {
-            await axios.post(`${API_URL}/entries/`, {
-                title: 'Quick Note',
-                content: text,
-                folder: 'Journal', // Default to Journal
-                mood: '😐'
-            });
-            onRefresh();
-        } catch (e) {
-            console.error("Quick add failed", e);
-        }
-    };
-
-    // --- RESIZE HANDLERS ---
-    useEffect(() => {
-        const handleMouseMove = (e) => {
-            if (isDraggingMiddle.current) {
-                const newWidth = Math.max(200, Math.min(600, e.clientX - 70 - 40)); // Approximate offset logic (Sidebar width + padding)
-                // Actually, logic is cleaner if we just use movementX, but absolute clientX is safer.
-                // We need to know where the container starts. 
-                // Let's assume Left Sidebar is roughly steady.
-                // Better approach: 
-                setMiddleWidth(prev => Math.max(150, Math.min(500, prev + e.movementX)));
-            }
-            if (isDraggingRight.current) {
-                setRightWidth(prev => Math.max(200, Math.min(500, prev - e.movementX)));
-            }
-        };
-
-        const handleMouseUp = () => {
-            isDraggingMiddle.current = false;
-            isDraggingRight.current = false;
-            document.body.style.cursor = 'default';
-        };
-
-        document.addEventListener('mousemove', handleMouseMove);
-        document.addEventListener('mouseup', handleMouseUp);
-        return () => {
-            document.removeEventListener('mousemove', handleMouseMove);
-            document.removeEventListener('mouseup', handleMouseUp);
-        };
-    }, []);
-
-    const startResizeMiddle = (e) => {
-        e.preventDefault();
-        isDraggingMiddle.current = true;
-        document.body.style.cursor = 'col-resize';
-    };
-
-    const startResizeRight = (e) => {
-        e.preventDefault();
-        isDraggingRight.current = true;
-        document.body.style.cursor = 'col-resize';
-    };
-
 
     // --- RENDER ---
     return (
@@ -557,108 +466,7 @@ const JournalViewContent = ({ isPrivate, setIsPrivate, setAppBackground }) => {
 
             {/* --- RIGHT: ADAPTIVE PANEL --- */}
             <aside className="adaptive-panel">
-
-                {/* 1. QUICK CHECK-IN (TOP) */}
-                {/* 1. QUICK NOTE & HABITS */}
-                <div style={{ flex: '0 0 auto', maxHeight: '60%', overflowY: 'auto', paddingRight: '5px' }}>
-
-                    <div style={{ marginBottom: '20px', paddingTop: '10px' }}>
-                        <QuickCheckIn
-                            onAddEntry={handleQuickAdd}
-                            isManagingHabits={isManagingHabits}
-                            onToggleManage={() => setIsManagingHabits(!isManagingHabits)}
-                        />
-                    </div>
-
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', position: 'sticky', top: 0, background: 'var(--bg-secondary)', zIndex: 5, paddingBottom: '5px' }}>
-                        <h4 style={{ margin: 0, color: 'var(--contrast-text)', fontSize: '14px', fontWeight: '600' }}>Habit Tracker</h4>
-                        <Settings size={14} color="var(--muted-text)" style={{ cursor: 'pointer', opacity: 0.8 }} onClick={() => setIsManagingHabits(!isManagingHabits)} />
-                    </div>
-
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                        {allHabits.map(h => {
-                            const isDone = completedHabitIds.includes(h.id);
-                            return (
-                                <div key={h.id} onClick={() => !isManagingHabits && toggleHabit(h.id)}
-                                    style={{
-                                        display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px',
-                                        background: isDone ? 'var(--contrast-text)' : 'var(--bg-primary)',
-                                        border: '1px solid var(--border-color)', cursor: 'pointer', transition: 'all 0.2s',
-                                        color: isDone ? 'var(--bg-primary)' : 'var(--contrast-text)',
-                                        borderRadius: 'var(--radius-md)', marginBottom: '8px',
-                                        boxShadow: 'var(--shadow-soft)'
-                                    }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                        <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: isDone ? 'var(--nothing-red)' : 'var(--border-color)', boxShadow: isDone ? '0 0 5px var(--nothing-red)' : 'none' }}></div>
-                                        <span style={{ fontSize: '14px', fontFamily: 'var(--font-mono)', fontWeight: 'bold' }}>{h.name}</span>
-                                    </div>
-                                    <span style={{ fontSize: '16px', opacity: isDone ? 1 : 0.5 }}>{h.icon}</span>
-                                    {isManagingHabits && (
-                                        <button onClick={(e) => { e.stopPropagation(); handleDeleteHabit(h.id); }} style={{ border: 'none', background: 'transparent', color: 'var(--nothing-red)', cursor: 'pointer' }}>
-                                            <Trash2 size={12} />
-                                        </button>
-                                    )}
-                                </div>
-                            );
-                        })}
-                    </div>
-
-                    {/* Inline Add Button */}
-                    {isManagingHabits || allHabits.length === 0 ? (
-                        <div style={{ marginTop: '15px', border: '1px dashed var(--muted-text)', padding: '10px', background: 'var(--bg-primary)' }}>
-                            <div style={{ display: 'flex', gap: '5px', marginBottom: '5px' }}>
-                                <input placeholder="Name..." value={newHabitName} onChange={e => setNewHabitName(e.target.value)}
-                                    style={{ flex: 1, border: 'none', borderBottom: '1px solid var(--contrast-text)', background: 'transparent', color: 'var(--contrast-text)', outline: 'none', fontSize: '12px', fontFamily: 'var(--font-mono)', padding: '4px' }} />
-                                <input placeholder="Icon" value={newHabitIcon} onChange={e => setNewHabitIcon(e.target.value)}
-                                    style={{ width: '30px', border: 'none', borderBottom: '1px solid var(--contrast-text)', background: 'transparent', color: 'var(--contrast-text)', outline: 'none', fontSize: '12px', textAlign: 'center' }} />
-                            </div>
-                            <button onClick={handleAddHabit} style={{ width: '100%', background: 'var(--contrast-text)', color: 'var(--bg-primary)', border: 'none', padding: '6px', fontSize: '11px', cursor: 'pointer', fontFamily: 'var(--font-mono)' }}>
-                                + ADD
-                            </button>
-                        </div>
-                    ) : (
-                        <button onClick={() => setIsManagingHabits(true)} style={{ marginTop: '15px', width: '100%', border: '1px dashed var(--muted-text)', background: 'transparent', padding: '8px', color: 'var(--muted-text)', fontSize: '11px', cursor: 'pointer', fontFamily: 'var(--font-mono)' }}>
-                            + ADD NEW
-                        </button>
-                    )}
-                </div>
-
-                {/* 2. INSIGHTS (SOFT DROPDOWN - MIDDLE) */}
-                <div style={{ marginTop: '20px', borderTop: '1px solid var(--border-color)' }}>
-                    <div onClick={() => setIsInsightsOpen(!isInsightsOpen)}
-                        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px 0', cursor: 'pointer', color: 'var(--muted-text)' }}>
-                        <h4 style={{ margin: 0, fontSize: '14px', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--contrast-text)' }}>
-                            <BarChart2 size={16} /> Insights
-                        </h4>
-                        {isInsightsOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                    </div>
-
-                    {isInsightsOpen && (
-                        <div className="fade-in-up" style={{ padding: '0 0 20px 0' }}>
-                            <div style={{ background: 'var(--bg-primary)', border: '1px solid var(--border-color)', padding: '15px', borderRadius: '4px' }}>
-                                <div style={{ fontSize: '10px', color: 'var(--muted-text)', fontFamily: 'var(--font-mono)', marginBottom: '5px' }}>THIS WEEK</div>
-                                <div style={{ fontSize: '24px', fontWeight: 'bold', display: 'flex', alignItems: 'baseline', gap: '5px', color: 'var(--contrast-text)' }}>
-                                    <CountUp end={entries.filter(e => {
-                                        const d = new Date(e.date || Date.now());
-                                        const now = new Date();
-                                        return d > new Date(now.setDate(now.getDate() - 7));
-                                    }).length} />
-                                    <span style={{ fontSize: '12px', fontWeight: 'normal', color: 'var(--muted-text)' }}>entries</span>
-                                </div>
-                                <div style={{ fontSize: '10px', color: 'var(--nothing-red)', marginTop: '10px' }}>Keep the streak alive! 🔥</div>
-                            </div>
-                        </div>
-                    )}
-                </div>
-
-                {/* 3. CALENDAR (BOTTOM PINNED) */}
-                <div style={{ marginTop: 'auto', paddingTop: '20px', paddingBottom: '20px', width: '100%' }}>
-                    <CalendarPanel
-                        entries={entries.filter(e => !optimisticDeletedIds.includes(e.id))}
-                        selectedDate={selectedDate}
-                        onDateSelect={setSelectedDate}
-                    />
-                </div>
+                <AdaptiveRightPanel optimisticDeletedIds={optimisticDeletedIds} />
             </aside>
 
             {/* --- MODALS --- */}
