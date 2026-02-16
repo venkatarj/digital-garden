@@ -238,10 +238,13 @@ function App() {
                   padding: '8px 12px', cursor: 'pointer', borderRadius: 'var(--radius-md)', fontSize: '14px', fontWeight: '500',
                   color: activeFolder === folder ? 'var(--contrast-text)' : 'var(--muted-text)',
                   background: activeFolder === folder ? 'var(--bg-primary)' : 'transparent',
-                  marginBottom: '2px', display: 'flex', alignItems: 'center', gap: '10px',
+                  marginBottom: '2px', display: 'flex', alignItems: 'center', gap: '10px', justifyContent: 'space-between',
                   boxShadow: activeFolder === folder ? 'var(--shadow-soft)' : 'none'
                 }} className="sidebar-item">
-                <Folder size={14} /> {folder}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <Folder size={14} /> {folder}
+                </div>
+                <Lock size={10} style={{ opacity: 0.4 }} />
               </div>
             ))}
             {isAddingFolder ? (
