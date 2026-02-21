@@ -18,7 +18,8 @@ const UnifiedSidebar = ({
     onExportData,
     onLogout,
     isDarkMode,
-    toggleDarkMode
+    toggleDarkMode,
+    isMobileOpen
 }) => {
     const ui = useUI(); // Use centralized UI state
     const [isAddingFolder, setIsAddingFolder] = useState(false);
@@ -124,7 +125,7 @@ const UnifiedSidebar = ({
     }
 
     return (
-        <aside className="unified-sidebar" style={{
+        <aside className={`unified-sidebar${isMobileOpen ? ' mobile-open' : ''}`} style={{
             width: '280px',
             background: 'var(--bg-secondary)',
             borderRight: '1px solid var(--border-color)',

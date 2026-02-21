@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React from 'react';
 import {
     FileText, Plus, ChevronLeft, ChevronRight, Lock, Unlock, Trash2,
     Sprout, Sparkles, Tag, CheckCircle, Clock, Maximize, Minimize
@@ -23,11 +23,6 @@ const EditorPanel = ({ isPrivate, setIsPrivate, onDelete }) => {
         loadEntryData, resetEditor, saveEntry,
         handleAutoTag, handleFinishReflection
     } = useJournal();
-
-    const [previewMood, setPreviewMood] = useState(null);
-    const typingTimeoutRef = useRef(null);
-    const textareaRef = useRef(null);
-    const cardRef = useRef(null);
 
     // Deep Dive Questions
     const DEEP_DIVE_QUESTIONS = {
@@ -59,8 +54,8 @@ const EditorPanel = ({ isPrivate, setIsPrivate, onDelete }) => {
     };
 
     const helperStyle = {
-        background: 'white', border: '1px solid #e2e8f0', padding: '6px 12px', borderRadius: '15px',
-        cursor: 'pointer', fontSize: '12px', color: '#4a5568', transition: 'all 0.2s'
+        background: 'var(--bg-primary)', border: '1px solid var(--border-color)', padding: '6px 12px', borderRadius: '15px',
+        cursor: 'pointer', fontSize: '12px', color: 'var(--contrast-text)', transition: 'all 0.2s'
     };
 
     // Navigation: prev/next within current folder
@@ -88,7 +83,7 @@ const EditorPanel = ({ isPrivate, setIsPrivate, onDelete }) => {
     return (
         <main className={`editor-main ${isTyping || isEditorFocused ? 'zen-mode' : ''} ${isEditorFocused ? 'focus-mode' : ''} ${isThoughtSettled ? 'thought-settled' : ''}`}
             style={{
-                flex: 1, margin: '0 10px', display: 'flex', flexDirection: 'column', height: '100%', minWidth: '400px',
+                flex: 1, margin: '0 10px', display: 'flex', flexDirection: 'column', height: '100%', minWidth: 0,
                 overflow: 'hidden'
             }}>
 
@@ -113,7 +108,6 @@ const EditorPanel = ({ isPrivate, setIsPrivate, onDelete }) => {
                         <MoodSelector
                             selectedMood={selectedMood}
                             onSelectMood={setSelectedMood}
-                            onPreview={setPreviewMood}
                         />
                     </div>
                 </div>
@@ -167,7 +161,6 @@ const EditorPanel = ({ isPrivate, setIsPrivate, onDelete }) => {
 
             {/* Editor Card Container */}
             <div className={`editor-card ${isEditorFocused ? 'focused' : ''}`}
-                ref={cardRef}
                 style={{
                     boxShadow: isEditorFocused ? 'var(--card-shadow)' : 'none',
                     border: isEditorFocused ? '1px solid var(--border-color)' : '1px solid transparent',
@@ -216,10 +209,9 @@ const EditorPanel = ({ isPrivate, setIsPrivate, onDelete }) => {
                 </div>
 
                 <textarea
-                    ref={textareaRef}
                     placeholder="Start writing..."
                     value={content}
-                    onChange={e => { setContent(e.target.value); if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current); }}
+                    onChange={e => setContent(e.target.value)}
                     onFocus={() => setIsEditorFocused(true)}
                     onBlur={() => setIsEditorFocused(false)}
                     className="editor-textarea"

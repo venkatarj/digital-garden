@@ -1,9 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
-import {
-  BookOpen, Calendar as CalIcon, Brain, Folder, Plus, Clock, Trash2, ChevronDown,
-  Lock, Unlock, ChevronsLeft, ChevronsRight, Search, Menu, BarChart2, Sun, Moon, Download, LogOut
-} from 'lucide-react';
 import { GoogleOAuthProvider } from '@react-oauth/google';
 
 import Login from './features/auth/Login';
@@ -24,10 +20,7 @@ const API_URL = import.meta.env.VITE_API_URL || `http://${window.location.hostna
 axios.interceptors.request.use(config => {
   const token = localStorage.getItem('token');
   if (token) {
-    // Use Authorization: Bearer <token> for JWT
     config.headers['Authorization'] = `Bearer ${token}`;
-    // Keep x-token for backward compatibility during migration
-    config.headers['x-token'] = token;
   }
   return config;
 });
@@ -42,8 +35,7 @@ function AppContent() {
 
   // App State (non-UI)
   const [isPrivate, setIsPrivate] = useState(true);
-  const [reminderFilter, setReminderFilter] = useState('This Week');
-  const [appBackground, setAppBackground] = useState('#F5F7F5');
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [theme, setTheme] = useState(() => {
     const savedTheme = localStorage.getItem('theme');
     return savedTheme || 'light';
@@ -126,31 +118,6 @@ function AppContent() {
   useEffect(() => {
     if (isAuthenticated) {
       fetchData();
-
-      // Connect to WebSocket
-      /* DISABLED
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      let host = window.location.host; // Default to current host (production)
-
-      // If API_URL is independent (local dev), use its host
-      if (API_URL.startsWith('http')) {
-        try {
-          host = new URL(API_URL).host;
-        } catch (e) {
-          console.error("Invalid API_URL:", API_URL);
-        }
-      }
-
-      const wsUrl = `${protocol}//${host}/ws/${Date.now()}`;
-
-      const ws = new WebSocket(wsUrl);
-
-      ws.onopen = () => console.log("✅ WebSocket Connected");
-      ws.onmessage = (event) => console.log("📩 Message from server:", event.data);
-      ws.onclose = () => console.log("❌ WebSocket Disconnected");
-
-      return () => ws.close();
-      */
     }
   }, [isAuthenticated]);
 
@@ -224,11 +191,6 @@ function AppContent() {
     }
   };
 
-  const deleteReminder = async (remId) => {
-    await axios.delete(`${API_URL}/reminders/${remId}`);
-    fetchData();
-  };
-
   const handleAddFolder = (folderName) => {
     if (!folderName || !folderName.trim()) return;
 
@@ -288,33 +250,6 @@ function AppContent() {
     }
   };
 
-  const getFilteredReminders = () => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    return reminders.filter(r => {
-      const [y, m, d] = r.date.split('-').map(Number);
-      const rDate = new Date(y, m - 1, d);
-      const diffTime = rDate - today;
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
-      if (reminderFilter === 'Today') return diffDays === 0;
-      if (reminderFilter === 'This Week') return diffDays >= 0 && diffDays <= 7;
-      if (reminderFilter === 'Next 2 Weeks') return diffDays >= 0 && diffDays <= 14;
-      if (reminderFilter === 'This Month') return rDate.getMonth() === today.getMonth();
-      return true;
-    });
-  };
-
-  const navItemStyle = (isActive) => ({
-    padding: '8px 12px', cursor: 'pointer', borderRadius: 'var(--radius-md)', display: 'flex', gap: '10px', alignItems: 'center',
-    background: isActive ? 'var(--bg-primary)' : 'transparent',
-    color: isActive ? 'var(--contrast-text)' : 'var(--muted-text)',
-    fontWeight: isActive ? '600' : '500', marginBottom: '4px',
-    fontSize: '14px', transition: 'all 0.2s ease',
-    boxShadow: isActive ? 'var(--shadow-soft)' : 'none'
-  });
-
   // Auth view rendering
   if (!isAuthenticated) {
     return <Login onLogin={() => setIsAuthenticated(true)} />;
@@ -323,19 +258,33 @@ function AppContent() {
   // Find selected entry object
   const selectedEntry = entries.find(e => e.id === ui.selectedEntryId);
 
+  const closeMobileSidebar = useCallback(() => setIsMobileSidebarOpen(false), []);
+
   return (
     <div style={{
-      display: 'flex', height: '100vh',
+      display: 'flex', height: '100dvh',
       fontFamily: 'var(--font-sans)', color: 'var(--contrast-text)',
       background: 'var(--bg-primary)',
-      transition: 'background 0.3s ease'
+      transition: 'background 0.3s ease',
+      overflow: 'hidden'
     }} data-theme={theme}>
+      {/* Mobile overlay backdrop */}
+      {isMobileSidebarOpen && (
+        <div
+          onClick={closeMobileSidebar}
+          style={{
+            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)',
+            zIndex: 199, backdropFilter: 'blur(2px)'
+          }}
+        />
+      )}
+
       {/* UNIFIED LEFT SIDEBAR - Only show if not fullscreen */}
       {!ui.isFullscreen && (
         <UnifiedSidebar
           folders={folders}
           entries={entries}
-          onEntryClick={loadEntry}
+          onEntryClick={(entry) => { loadEntry(entry); closeMobileSidebar(); }}
           onDeleteEntry={handleDeleteEntry}
           onAddFolder={handleAddFolder}
           onDeleteFolder={handleDeleteFolder}
@@ -343,11 +292,36 @@ function AppContent() {
           onLogout={handleLogout}
           isDarkMode={theme === 'dark'}
           toggleDarkMode={() => setTheme(theme === 'light' ? 'dark' : 'light')}
+          isMobileOpen={isMobileSidebarOpen}
         />
       )}
 
       {/* MAIN CONTENT AREA - Mutually exclusive views */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
+        {/* Mobile header bar */}
+        {!ui.isFullscreen && (
+          <div className="mobile-header" style={{
+            display: 'none',
+            padding: '12px 16px',
+            borderBottom: '1px solid var(--border-color)',
+            background: 'var(--bg-secondary)',
+            alignItems: 'center',
+            gap: '12px',
+            flexShrink: 0
+          }}>
+            <button
+              onClick={() => setIsMobileSidebarOpen(true)}
+              style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--contrast-text)', display: 'flex', alignItems: 'center', padding: '4px' }}
+              aria-label="Open menu"
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>
+              </svg>
+            </button>
+            <span style={{ fontWeight: '700', fontSize: '16px', color: 'var(--accent-primary)' }}>delulu</span>
+          </div>
+        )}
+
         {ui.view === 'journal' && (
           <JournalView
             entries={entries}
@@ -358,11 +332,10 @@ function AppContent() {
             onDelete={handleDeleteEntry}
             isPrivate={isPrivate}
             setIsPrivate={setIsPrivate}
-            setAppBackground={setAppBackground}
           />
         )}
         {ui.view === 'calendar' && (
-          <div style={{ flex: 1, padding: '40px', overflowY: 'auto', background: 'var(--bg-primary)' }}>
+          <div style={{ flex: 1, padding: '24px', overflowY: 'auto', background: 'var(--bg-primary)' }}>
             <CalendarView
               entries={entries}
               reminders={reminders}
@@ -371,7 +344,7 @@ function AppContent() {
           </div>
         )}
         {ui.view === 'insights' && (
-          <div style={{ flex: 1, padding: '40px', overflowY: 'auto', background: 'var(--bg-primary)' }}>
+          <div style={{ flex: 1, padding: '24px', overflowY: 'auto', background: 'var(--bg-primary)' }}>
             <InsightsView entries={entries} />
           </div>
         )}

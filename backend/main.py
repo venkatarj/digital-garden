@@ -1,20 +1,17 @@
-from fastapi import FastAPI, HTTPException, Depends, Header
+from fastapi import FastAPI, HTTPException, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from sqlalchemy import desc, text
 from datetime import date, datetime, timedelta
-import os
 import models
 from database import engine, get_db
-from pydantic import BaseModel, Field, EmailStr
+from pydantic import BaseModel, Field
 from typing import List, Optional
-from fastapi import FastAPI, HTTPException, Depends, Header, WebSocket, WebSocketDisconnect, Request
 import auth
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.feature_extraction.text import CountVectorizer
-import numpy as np
 import logging
 import time
 
@@ -40,9 +37,6 @@ def health_check(db: Session = Depends(get_db)):
 # Load AI Model (Small, fast)
 model = SentenceTransformer('all-MiniLM-L6-v2')
 
-# CONFIG
-APP_PASSWORD = os.getenv("APP_PASSWORD", "secret")
-
 app.add_middleware(
     CORSMiddleware,
     # Restrict to frontend origin (local + prod)
@@ -64,24 +58,6 @@ async def log_requests(request: Request, call_next):
         process_time = time.time() - start_time
         logger.error(f"Request failed: {request.url.path} Error: {str(e)} Duration: {process_time:.4f}s", exc_info=True)
         raise e
-
-# --- WEBSOCKET MANAGER ---
-class ConnectionManager:
-    def __init__(self):
-        self.active_connections: List[WebSocket] = []
-
-    async def connect(self, websocket: WebSocket):
-        await websocket.accept()
-        self.active_connections.append(websocket)
-
-    def disconnect(self, websocket: WebSocket):
-        self.active_connections.remove(websocket)
-
-    async def broadcast(self, message: str):
-        for connection in self.active_connections:
-            await connection.send_text(message)
-
-manager = ConnectionManager()
 
 # --- AUTHENTICATION ---
 security = HTTPBearer()
@@ -111,13 +87,6 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
         raise HTTPException(status_code=401, detail="User not found")
     
     return user
-
-# Optional: backward compatibility with x-token header
-def verify_token_legacy(x_token: str = Header(None)):
-    """Legacy token verification - kept for backward compatibility during migration"""
-    if x_token == "valid_token":
-        return True
-    raise HTTPException(status_code=401, detail="Invalid token")
 
 # --- AUTH SCHEMAS ---
 class GoogleAuthSchema(BaseModel):
@@ -480,19 +449,7 @@ def delete_task(task_id: int, current_user: models.User = Depends(get_current_us
         db.commit()
     return {"ok": True}
 
-# 4. Real-time WebSocket (DISABLED)
-# @app.websocket("/ws/{client_id}")
-# async def websocket_endpoint(websocket: WebSocket, client_id: int):
-#     await manager.connect(websocket)
-#     try:
-#         while True:
-#             data = await websocket.receive_text()
-#             # Echo for now, or handle commands
-#             await manager.broadcast(f"Client #{client_id} says: {data}")
-#     except WebSocketDisconnect:
-#         manager.disconnect(websocket)
-
-# 5. Semantic Search
+# 4. Semantic Search
 @app.post("/search/", response_model=List[EntryResponse])
 def semantic_search(search: SearchSchema, current_user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
     # 1. Get all entries for current user
