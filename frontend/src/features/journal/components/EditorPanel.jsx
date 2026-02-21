@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react';
 import {
     FileText, Plus, ChevronLeft, ChevronRight, Lock, Unlock, Trash2,
-    Sprout, Sparkles, Tag, CheckCircle, Clock
+    Sprout, Sparkles, Tag, CheckCircle, Clock, Maximize, Minimize
 } from 'lucide-react';
 import { useJournal } from '../context/JournalContext';
 import MoodSelector from './MoodSelector';
@@ -11,12 +11,13 @@ const EditorPanel = ({ isPrivate, setIsPrivate, onDelete }) => {
         id, title, content, selectedMood, tags, currentFolder,
         isEditorFocused, saveStatus, isTyping, isThoughtSettled,
         showGrowthAnim, ghostTitle, showHelper, showTags,
+        isFullscreen,
         suggestedTags, activeHint, isAnalyzing,
         activeOverlay, currentQuestion,
         isReflecting, learning, reflectionPrompt,
         entries,
         setTitle, setContent, setSelectedMood, setTags,
-        setIsEditorFocused, setShowTags,
+        setIsEditorFocused, setShowTags, setIsFullscreen,
         setActiveHint, setActiveOverlay, setCurrentQuestion,
         setLearning,
         loadEntryData, resetEditor, saveEntry,
@@ -25,6 +26,8 @@ const EditorPanel = ({ isPrivate, setIsPrivate, onDelete }) => {
 
     const [previewMood, setPreviewMood] = useState(null);
     const typingTimeoutRef = useRef(null);
+    const textareaRef = useRef(null);
+    const cardRef = useRef(null);
 
     // Deep Dive Questions
     const DEEP_DIVE_QUESTIONS = {
@@ -85,8 +88,8 @@ const EditorPanel = ({ isPrivate, setIsPrivate, onDelete }) => {
     return (
         <main className={`editor-main ${isTyping || isEditorFocused ? 'zen-mode' : ''} ${isEditorFocused ? 'focus-mode' : ''} ${isThoughtSettled ? 'thought-settled' : ''}`}
             style={{
-                flex: 1, margin: '0 20px', display: 'flex', flexDirection: 'column', height: '100%', minWidth: '400px',
-                overflowY: 'auto'
+                flex: 1, margin: '0 10px', display: 'flex', flexDirection: 'column', height: '100%', minWidth: '400px',
+                overflow: 'hidden'
             }}>
 
             {/* Growth Animation Overlay */}
@@ -96,23 +99,27 @@ const EditorPanel = ({ isPrivate, setIsPrivate, onDelete }) => {
                 </div>
             )}
 
-            {/* Top Bar: Breadcrumbs & Navigation */}
-            <div className="top-bar-container" style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px', color: 'var(--muted-text)', fontSize: '13px', alignItems: 'center', transition: 'opacity 0.5s' }}>
+            {/* Top Bar: +New Left, Mood Slider Center, Controls Right */}
+            <div className="top-bar-container" style={{ display: 'flex', alignItems: 'center', marginBottom: '4px', transition: 'opacity 0.5s', gap: '12px' }}>
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span style={{ fontWeight: 'bold', color: 'var(--contrast-text)', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                        <FileText size={14} /> {id ? (title || 'Untitled') : 'New Entry'}
-                    </span>
-                    {id && <span style={{ marginLeft: '10px', background: 'var(--bg-secondary)', padding: '1px 6px', borderRadius: '4px', fontSize: '10px', color: 'var(--muted-text)' }}>#{id}</span>}
+                {/* Left: +New Button */}
+                <button onClick={resetEditor} title="New Note" style={{ background: 'var(--accent-primary)', color: '#fff', border: 'none', borderRadius: '20px', padding: '6px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px', fontSize: '12px', fontWeight: 'bold', flexShrink: 0 }}>
+                    <Plus size={14} /> New
+                </button>
+
+                {/* Center: Mood Slider (takes available space) */}
+                <div style={{ flex: 1, display: 'flex', justifyContent: 'center' }}>
+                    <div style={{ width: '100%' }}>
+                        <MoodSelector
+                            selectedMood={selectedMood}
+                            onSelectMood={setSelectedMood}
+                            onPreview={setPreviewMood}
+                        />
+                    </div>
                 </div>
 
-                <div style={{ flex: 1 }}></div>
-
-                {/* Controls */}
-                <div style={{ display: 'flex', gap: '15px', alignItems: 'center' }}>
-                    <button onClick={resetEditor} title="New Note" style={{ background: 'var(--accent-primary)', color: '#fff', border: 'none', borderRadius: '20px', padding: '6px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px', fontSize: '12px', fontWeight: 'bold' }}>
-                        <Plus size={14} /> New
-                    </button>
+                {/* Right: Controls */}
+                <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexShrink: 0 }}>
                     {/* Arrows */}
                     <div style={{ display: 'flex', gap: '2px', background: 'var(--bg-primary)', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
                         <button disabled={!prevEntry} onClick={() => loadEntryData(prevEntry)} title="Previous (Older)"
@@ -126,9 +133,17 @@ const EditorPanel = ({ isPrivate, setIsPrivate, onDelete }) => {
                         </button>
                     </div>
 
-                    <div style={{ cursor: 'pointer', display: 'flex', gap: '5px', alignItems: 'center', color: 'var(--muted-text)' }} onClick={() => setIsPrivate(!isPrivate)}>
+                    <div style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', color: 'var(--muted-text)' }} onClick={() => setIsPrivate(!isPrivate)}>
                         {isPrivate ? <Lock size={14} /> : <Unlock size={14} />}
                     </div>
+
+                    <button
+                        onClick={() => setIsFullscreen(!isFullscreen)}
+                        title={isFullscreen ? "Exit Fullscreen" : "Enter Fullscreen"}
+                        style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--muted-text)', display: 'flex', alignItems: 'center' }}
+                    >
+                        {isFullscreen ? <Minimize size={14} /> : <Maximize size={14} />}
+                    </button>
 
                     {id && (
                         <button onClick={(e) => onDelete(e, id)} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--nothing-red)', opacity: 0.6 }} title="Delete Entry">
@@ -138,34 +153,28 @@ const EditorPanel = ({ isPrivate, setIsPrivate, onDelete }) => {
                 </div>
             </div>
 
-            {/* Mood Selector - Animated */}
-            <div className="mood-selector-container" style={{ marginBottom: '20px', textAlign: 'center', transition: 'opacity 0.5s', maxWidth: '680px', margin: '0 auto 20px auto', width: '100%' }}>
-                <MoodSelector
-                    selectedMood={selectedMood}
-                    onSelectMood={setSelectedMood}
-                    onPreview={setPreviewMood}
-                />
-            </div>
-
             {/* Writing Helpers */}
             {showHelper && (
-                <div className="helper-reveal helper-buttons-container" style={{ display: 'flex', gap: '10px', marginBottom: '15px', justifyContent: 'center', transition: 'opacity 0.5s', maxWidth: '680px', margin: '0 auto 15px auto', width: '100%' }}>
+                <div className="helper-reveal helper-buttons-container" style={{ display: 'flex', gap: '10px', marginBottom: '4px', justifyContent: 'center', transition: 'opacity 0.5s', margin: '0 auto 4px auto', width: '100%' }}>
                     <button onClick={() => openOverlay('reflect')} style={helperStyle}>🤔 Deep Dive</button>
                     <button onClick={() => openOverlay('vent')} style={helperStyle}>😤 Clear Mind</button>
                     <button onClick={() => openOverlay('gratitude')} style={helperStyle}>🙏 Give Thanks</button>
                 </div>
             )}
-            <div style={{ textAlign: 'center', marginBottom: '10px' }}>
+            <div style={{ textAlign: 'center', marginBottom: '4px' }}>
                 <button onClick={() => setContent('')} style={{ ...helperStyle, color: 'var(--nothing-red)', opacity: content ? 1 : 0 }}>Clear</button>
             </div>
 
             {/* Editor Card Container */}
             <div className={`editor-card ${isEditorFocused ? 'focused' : ''}`}
+                ref={cardRef}
                 style={{
                     boxShadow: isEditorFocused ? 'var(--card-shadow)' : 'none',
                     border: isEditorFocused ? '1px solid var(--border-color)' : '1px solid transparent',
                     position: 'relative',
-                    maxWidth: '680px', margin: '0 auto', width: '100%'
+                    margin: '0 auto', width: '100%',
+                    flex: 1, display: 'flex', flexDirection: 'column',
+                    overflow: 'hidden', minHeight: 0
                 }}>
                 {/* Life OS: Smart Floating Hint */}
                 {activeHint && (
@@ -188,7 +197,7 @@ const EditorPanel = ({ isPrivate, setIsPrivate, onDelete }) => {
                 )}
 
                 {/* Editor - Ghost Text & Focus */}
-                <div className="ghost-input-container" style={{ marginBottom: '15px' }}>
+                <div className="ghost-input-container" style={{ marginBottom: '8px' }}>
                     <input
                         placeholder="Title..."
                         value={title}
@@ -207,12 +216,14 @@ const EditorPanel = ({ isPrivate, setIsPrivate, onDelete }) => {
                 </div>
 
                 <textarea
+                    ref={textareaRef}
                     placeholder="Start writing..."
                     value={content}
                     onChange={e => { setContent(e.target.value); if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current); }}
                     onFocus={() => setIsEditorFocused(true)}
                     onBlur={() => setIsEditorFocused(false)}
-                    style={{ width: '100%', minHeight: '400px', border: 'none', background: 'transparent', fontSize: '18px', lineHeight: '1.8', outline: 'none', resize: 'none', color: 'var(--contrast-text)', fontFamily: 'var(--font-sans)', caretColor: 'var(--accent-primary)' }}
+                    className="editor-textarea"
+                    style={{ width: '100%', flex: 1, border: 'none', background: 'transparent', fontSize: '18px', lineHeight: '1.8', outline: 'none', resize: 'none', color: 'var(--contrast-text)', fontFamily: 'var(--font-sans)', caretColor: 'var(--accent-primary)', overflowY: 'auto' }}
                 />
             </div>
 

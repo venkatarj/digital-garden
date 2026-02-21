@@ -11,6 +11,11 @@ import JournalView from './features/journal/JournalView';
 import CalendarView from './features/calendar/CalendarView';
 import InsightsView from './features/insights/InsightsView';
 import { CommandMenu } from './components/CommandMenu';
+import UnifiedSidebar from './components/UnifiedSidebar';
+import { UIProvider, useUI } from './context/UIContext';
+import { ThemeProvider } from './context/ThemeContext';
+import DeleteConfirmModal from './features/journal/components/DeleteConfirmModal';
+import ToastNotification from './features/journal/components/ToastNotification';
 
 // --- IP ADDRESS ---
 const API_URL = import.meta.env.VITE_API_URL || `http://${window.location.hostname}:8000`;
@@ -27,28 +32,26 @@ axios.interceptors.request.use(config => {
   return config;
 });
 
-function App() {
+// Separate component that uses UI context
+function AppContent() {
+  const ui = useUI(); // Access centralized UI state
   const [isAuthenticated, setIsAuthenticated] = useState(!!localStorage.getItem('token'));
-  const [view, setView] = useState('journal');
   const [entries, setEntries] = useState([]);
   const [reminders, setReminders] = useState([]);
   const [folders, setFolders] = useState(['Journal', 'Work', 'Ideas']);
 
-  // App State
-  const [activeFolder, setActiveFolder] = useState('Journal');
-  const [isAddingFolder, setIsAddingFolder] = useState(false);
-  const [newFolderName, setNewFolderName] = useState('');
-  const [showRightPanel, setShowRightPanel] = useState(true);
+  // App State (non-UI)
   const [isPrivate, setIsPrivate] = useState(true);
   const [reminderFilter, setReminderFilter] = useState('This Week');
-  const [entryToEdit, setEntryToEdit] = useState(null);
-  const [appBackground, setAppBackground] = useState('#F5F7F5'); // Legacy, will override with theme
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [appBackground, setAppBackground] = useState('#F5F7F5');
   const [theme, setTheme] = useState(() => {
-    // Load theme from localStorage on mount
     const savedTheme = localStorage.getItem('theme');
     return savedTheme || 'light';
   });
+  const [deleteConfirmation, setDeleteConfirmation] = useState(null); // { folderName, count }
+  const [entryDeleteModal, setEntryDeleteModal] = useState({ isOpen: false, entryId: null, entryTitle: '' });
+  const [isDeletingEntry, setIsDeletingEntry] = useState(false);
+  const [toast, setToast] = useState({ isVisible: false, message: '', type: 'success', undoData: null });
 
   // Persist theme to localStorage
   useEffect(() => {
@@ -107,6 +110,19 @@ function App() {
     setIsAuthenticated(false);
   };
 
+  // Load custom folders from localStorage on mount
+  useEffect(() => {
+    const savedFolders = localStorage.getItem('customFolders');
+    if (savedFolders) {
+      try {
+        const customFolders = JSON.parse(savedFolders);
+        setFolders(prev => [...new Set([...prev, ...customFolders])]);
+      } catch (e) {
+        console.error('Failed to load custom folders:', e);
+      }
+    }
+  }, []);
+
   useEffect(() => {
     if (isAuthenticated) {
       fetchData();
@@ -139,16 +155,72 @@ function App() {
   }, [isAuthenticated]);
 
   const loadEntry = (entry) => {
-    setEntryToEdit(entry);
-    setActiveFolder(entry.folder); // Sync folder
-    setView('journal');
+    if (!entry) {
+      ui.setSelectedEntryId(null);
+      return;
+    }
+    ui.setSelectedEntryId(entry.id);
+    ui.setActiveFolder(entry.folder);
+    ui.setView('journal');
   };
 
-  const handleDeleteEntry = async (e, entryId) => {
-    e.stopPropagation();
-    if (window.confirm("Delete this entry permanently?")) {
-      await axios.delete(`${API_URL}/entries/${entryId}`);
+  const handleDeleteEntry = (e, entryId) => {
+    if (e) e.stopPropagation();
+    const entry = entries.find(e => e.id === entryId);
+    setEntryDeleteModal({
+      isOpen: true,
+      entryId,
+      title: 'Delete Entry?',
+      message: <>Are you sure you want to delete <span style={{ fontWeight: '600', color: 'var(--contrast-text)' }}>"{entry ? entry.title : 'Untitled Entry'}"</span>? This action cannot be undone.</>
+    });
+  };
+
+  const confirmDeleteEntry = async () => {
+    const idToDelete = entryDeleteModal.entryId;
+    if (!idToDelete) return;
+
+    setIsDeletingEntry(true);
+    const deletedEntry = entries.find(e => e.id === idToDelete);
+
+    try {
+      await axios.delete(`${API_URL}/entries/${idToDelete}`);
+
+      // Store undo data (excluding generated fields if necessary, but here we just need the payload)
+      setToast({
+        isVisible: true,
+        message: 'Entry deleted successfully',
+        type: 'success',
+        undoData: deletedEntry
+      });
+
       fetchData();
+      if (ui.selectedEntryId === idToDelete) {
+        ui.setSelectedEntryId(null);
+      }
+    } catch (error) {
+      console.error("Delete failed:", error);
+      setToast({ isVisible: true, message: 'Failed to delete entry', type: 'error', undoData: null });
+    } finally {
+      setIsDeletingEntry(false);
+      setEntryDeleteModal({ isOpen: false, entryId: null, entryTitle: '' });
+    }
+  };
+
+  const handleUndoDelete = async () => {
+    if (!toast.undoData) return;
+
+    try {
+      const { title, content, folder, mood, completed_habit_ids } = toast.undoData;
+      const res = await axios.post(`${API_URL}/entries/`, {
+        title, content, folder, mood, completed_habit_ids: completed_habit_ids || []
+      });
+
+      setToast({ isVisible: true, message: 'Entry restored!', type: 'success', undoData: null });
+      fetchData();
+      ui.setSelectedEntryId(res.data.id);
+    } catch (error) {
+      console.error("Undo failed:", error);
+      setToast({ isVisible: true, message: 'Failed to restore entry', type: 'error', undoData: null });
     }
   };
 
@@ -157,12 +229,62 @@ function App() {
     fetchData();
   };
 
-  const handleAddFolder = () => {
-    if (newFolderName) {
-      setFolders([...folders, newFolderName]);
-      setActiveFolder(newFolderName);
-      setNewFolderName('');
-      setIsAddingFolder(false);
+  const handleAddFolder = (folderName) => {
+    if (!folderName || !folderName.trim()) return;
+
+    const trimmedName = folderName.trim();
+    if (folders.includes(trimmedName)) {
+      alert('Folder already exists!');
+      return;
+    }
+
+    const updatedFolders = [...folders, trimmedName];
+    setFolders(updatedFolders);
+    ui.setActiveFolder(trimmedName);
+
+    // Persist to localStorage
+    localStorage.setItem('customFolders', JSON.stringify(updatedFolders));
+  };
+
+  const handleDeleteFolder = (folderName) => {
+    const entriesInFolder = entries.filter(e => e.folder === folderName);
+    setDeleteConfirmation({ folderName, count: entriesInFolder.length });
+  };
+
+  const confirmDeleteFolder = async () => {
+    if (!deleteConfirmation) return;
+    setIsDeletingEntry(true);
+    const { folderName, count } = deleteConfirmation;
+
+    try {
+      const entriesInFolder = entries.filter(e => e.folder === folderName);
+      // Delete entries in parallel
+      if (count > 0) {
+        await Promise.all(entriesInFolder.map(e => axios.delete(`${API_URL}/entries/${e.id}`)));
+      }
+
+      // Update state
+      setEntries(prev => prev.filter(e => e.folder !== folderName));
+      setFolders(prev => prev.filter(f => f !== folderName));
+
+      // Update LocalStorage
+      const savedFolders = localStorage.getItem('customFolders');
+      if (savedFolders) {
+        const customFolders = JSON.parse(savedFolders);
+        const newCustomFolders = customFolders.filter(f => f !== folderName);
+        localStorage.setItem('customFolders', JSON.stringify(newCustomFolders));
+      }
+
+      // Reset UI if needed
+      if (ui.activeFolder === folderName) {
+        ui.setActiveFolder(null);
+      }
+
+      // Refresh data
+      fetchData();
+    } finally {
+      setIsDeletingEntry(false);
+      setDeleteConfirmation(null);
     }
   };
 
@@ -198,156 +320,102 @@ function App() {
     return <Login onLogin={() => setIsAuthenticated(true)} />;
   }
 
+  // Find selected entry object
+  const selectedEntry = entries.find(e => e.id === ui.selectedEntryId);
+
   return (
     <div style={{
       display: 'flex', height: '100vh',
       fontFamily: 'var(--font-sans)', color: 'var(--contrast-text)',
-      background: 'var(--bg-primary)', /* FIX: Apply variable here so it picks up data-theme */
+      background: 'var(--bg-primary)',
       transition: 'background 0.3s ease'
     }} data-theme={theme}>
-      {/* 1. LEFT SIDEBAR */}
-      <div style={{
-        width: isSidebarCollapsed ? '70px' : '250px',
-        background: 'var(--bg-secondary)', borderRight: '1px solid var(--border-color)', padding: '25px 20px',
-        display: 'flex', flexDirection: 'column',
-        transition: 'width 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-        overflow: 'hidden'
-      }}>
-        <h2 style={{ color: 'var(--accent-primary)', marginBottom: '30px', display: 'flex', alignItems: 'center', gap: '15px', justifyContent: isSidebarCollapsed ? 'center' : 'flex-start' }}>
-          <BookOpen size={24} style={{ minWidth: '24px' }} />
-          {!isSidebarCollapsed && <span style={{ fontFamily: 'var(--font-mono)', letterSpacing: '1px', fontSize: '16px' }}>LIFE OS</span>}
-        </h2>
+      {/* UNIFIED LEFT SIDEBAR - Only show if not fullscreen */}
+      {!ui.isFullscreen && (
+        <UnifiedSidebar
+          folders={folders}
+          entries={entries}
+          onEntryClick={loadEntry}
+          onDeleteEntry={handleDeleteEntry}
+          onAddFolder={handleAddFolder}
+          onDeleteFolder={handleDeleteFolder}
+          onExportData={handleExportData}
+          onLogout={handleLogout}
+          isDarkMode={theme === 'dark'}
+          toggleDarkMode={() => setTheme(theme === 'light' ? 'dark' : 'light')}
+        />
+      )}
 
-        <div onClick={() => setView('journal')} style={{ ...navItemStyle(view === 'journal') }} className="sidebar-item">
-          <BookOpen size={18} /> {!isSidebarCollapsed && "Journal"}
-        </div>
-        <div onClick={() => setView('calendar')} style={{ ...navItemStyle(view === 'calendar') }} className="sidebar-item">
-          <CalIcon size={18} /> {!isSidebarCollapsed && "Calendar"}
-        </div>
-        <div onClick={() => setView('insights')} style={{ ...navItemStyle(view === 'insights') }} className="sidebar-item">
-          <BarChart2 size={18} /> {!isSidebarCollapsed && "Insights"}
-        </div>
-
-        {/* FOLDERS */}
-        {!isSidebarCollapsed && (
-          <>
-            <div style={{ marginTop: '24px', marginBottom: '8px', paddingLeft: '12px', fontSize: '13px', fontWeight: '600', color: 'var(--muted-text)' }}>Folders</div>
-            {folders.filter(f => f !== 'Journal').map(folder => (
-              <div key={folder} onClick={() => { setActiveFolder(folder); setView('journal'); }}
-                style={{
-                  padding: '8px 12px', cursor: 'pointer', borderRadius: 'var(--radius-md)', fontSize: '14px', fontWeight: '500',
-                  color: activeFolder === folder ? 'var(--contrast-text)' : 'var(--muted-text)',
-                  background: activeFolder === folder ? 'var(--bg-primary)' : 'transparent',
-                  marginBottom: '2px', display: 'flex', alignItems: 'center', gap: '10px', justifyContent: 'space-between',
-                  boxShadow: activeFolder === folder ? 'var(--shadow-soft)' : 'none'
-                }} className="sidebar-item">
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <Folder size={14} /> {folder}
-                </div>
-                <Lock size={10} style={{ opacity: 0.4 }} />
-              </div>
-            ))}
-            {isAddingFolder ? (
-              <input autoFocus placeholder="Name..." value={newFolderName} onChange={e => setNewFolderName(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleAddFolder()} onBlur={() => setIsAddingFolder(false)}
-                style={{ width: '100%', padding: '8px', marginTop: '5px', background: 'transparent', border: '1px solid var(--muted-text)', color: 'var(--contrast-text)', fontFamily: 'var(--font-mono)', fontSize: '13px', outline: 'none' }} />
-            ) : (
-              <div onClick={() => setIsAddingFolder(true)} className="sidebar-item" style={{ padding: '8px 12px', borderRadius: 'var(--radius-md)', cursor: 'pointer', color: 'var(--muted-text)', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '5px', marginTop: '8px', border: '1px dashed var(--border-color)', justifyContent: 'center' }}>
-                <Plus size={14} /> New Folder
-              </div>
-            )}
-          </>
-        )}
-
-        {/* EXPORT DATA, LOGOUT, THEME TOGGLE & COLLAPSE */}
-        <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: isSidebarCollapsed ? 'center' : 'space-between', paddingTop: '20px', borderTop: '1px solid var(--border-color)' }}>
-            <button onClick={handleExportData} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--muted-text)', display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <Download size={18} />
-              {!isSidebarCollapsed && <span style={{ fontFamily: 'var(--font-mono)', fontSize: '12px' }}>EXPORT DATA</span>}
-            </button>
-          </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: isSidebarCollapsed ? 'center' : 'space-between' }}>
-            <button onClick={handleLogout} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--muted-text)', display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <LogOut size={18} />
-              {!isSidebarCollapsed && <span style={{ fontFamily: 'var(--font-mono)', fontSize: '12px' }}>LOGOUT</span>}
-            </button>
-          </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: isSidebarCollapsed ? 'center' : 'space-between', paddingTop: '10px' }}>
-            <button onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--muted-text)', display: 'flex', alignItems: 'center', gap: '10px' }}>
-              {theme === 'light' ? <Moon size={18} /> : <Sun size={18} />}
-              {!isSidebarCollapsed && <span style={{ fontFamily: 'var(--font-mono)', fontSize: '12px' }}>{theme === 'light' ? 'DARK MODE' : 'LIGHT MODE'}</span>}
-            </button>
-
-            {!isSidebarCollapsed && (
-              <button onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--muted-text)' }}>
-                <ChevronsLeft size={18} />
-              </button>
-            )}
-          </div>
-          {isSidebarCollapsed && (
-            <button onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--muted-text)', alignSelf: 'center' }}>
-              <ChevronsRight size={18} />
-            </button>
-          )}
-        </div>
-
-        {/* RECENTS */}
-        <div style={{ marginTop: 'auto', paddingTop: '20px', borderTop: '1px solid #eee' }}>
-          <div style={{ fontSize: '12px', fontWeight: 'bold', color: '#a0aec0', marginBottom: '10px' }}>RECENT ENTRIES</div>
-          {entries.slice(0, 5).map(e => (
-            <div key={e.id} onClick={() => loadEntry(e)}
-              style={{ marginBottom: '8px', fontSize: '13px', cursor: 'pointer', color: '#4a5568', display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingRight: '5px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '5px', overflow: 'hidden' }}>
-                <Clock size={12} color="#cbd5e0" />
-                <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '140px' }}>{e.title || 'Untitled'}</span>
-              </div>
-              <Trash2 size={14} color="#e53e3e" style={{ opacity: 0.5, cursor: 'pointer' }}
-                onClick={(event) => handleDeleteEntry(event, e.id)}
-                onMouseOver={(e) => e.target.style.opacity = 1}
-                onMouseOut={(e) => e.target.style.opacity = 0.5}
-              />
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* 2. MAIN CONTENT - Transitions Background */}
-      <div className="page-transition" style={{
-        flex: 1, padding: '40px', overflowY: 'auto',
-        background: appBackground, transition: 'background 0.8s ease'
-      }}>
-        {view === 'journal' && (
+      {/* MAIN CONTENT AREA - Mutually exclusive views */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        {ui.view === 'journal' && (
           <JournalView
             entries={entries}
             folders={folders}
-            activeFolder={activeFolder}
-            entryToEdit={entryToEdit}
+            selectedEntry={selectedEntry}
+            activeFolder={ui.activeFolder}
             onRefresh={fetchData}
+            onDelete={handleDeleteEntry}
             isPrivate={isPrivate}
             setIsPrivate={setIsPrivate}
             setAppBackground={setAppBackground}
           />
         )}
-        {view === 'calendar' && (
-          <CalendarView
-            entries={entries}
-            reminders={reminders}
-            onRefresh={fetchData}
-          />
+        {ui.view === 'calendar' && (
+          <div style={{ flex: 1, padding: '40px', overflowY: 'auto', background: 'var(--bg-primary)' }}>
+            <CalendarView
+              entries={entries}
+              reminders={reminders}
+              onRefresh={fetchData}
+            />
+          </div>
         )}
-        {view === 'insights' && (
-          <InsightsView entries={entries} />
+        {ui.view === 'insights' && (
+          <div style={{ flex: 1, padding: '40px', overflowY: 'auto', background: 'var(--bg-primary)' }}>
+            <InsightsView entries={entries} />
+          </div>
         )}
       </div>
 
-      <CommandMenu view={view} setView={setView} theme={theme} setTheme={setTheme} />
+      <CommandMenu view={ui.view} setView={ui.setView} theme={theme} setTheme={setTheme} />
+
+      {/* Shared Delete Modal (Used for Entries and Folders) */}
+      <DeleteConfirmModal
+        isOpen={entryDeleteModal.isOpen || !!deleteConfirmation}
+        onClose={() => {
+          setEntryDeleteModal(prev => ({ ...prev, isOpen: false }));
+          setDeleteConfirmation(null);
+        }}
+        onConfirm={entryDeleteModal.isOpen ? confirmDeleteEntry : confirmDeleteFolder}
+        title={entryDeleteModal.isOpen ? entryDeleteModal.title : 'Delete Folder?'}
+        message={entryDeleteModal.isOpen ? entryDeleteModal.message : (
+          deleteConfirmation ? (
+            <>
+              Are you sure you want to delete <strong>{deleteConfirmation.folderName}</strong>?
+              {deleteConfirmation.count > 0 && (
+                <span style={{ display: 'block', marginTop: '8px', color: '#ef4444' }}>
+                  ⚠️ This will permanently delete {deleteConfirmation.count} entries inside.
+                </span>
+              )}
+            </>
+          ) : ''
+        )}
+        isDeleting={isDeletingEntry}
+      />
+
+      {/* Global Toast with Undo */}
+      <ToastNotification
+        isVisible={toast.isVisible}
+        message={toast.message}
+        type={toast.type}
+        onUndo={toast.undoData ? handleUndoDelete : null}
+        onClose={() => setToast(prev => ({ ...prev, isVisible: false }))}
+      />
     </div>
   );
 }
 
-// Wrap entire app with Google OAuth Provider
+// Wrap entire app with providers
 const AppWithAuth = () => {
   const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 
@@ -369,7 +437,11 @@ const AppWithAuth = () => {
 
   return (
     <GoogleOAuthProvider clientId={clientId}>
-      <App />
+      <ThemeProvider>
+        <UIProvider>
+          <AppContent />
+        </UIProvider>
+      </ThemeProvider>
     </GoogleOAuthProvider>
   );
 };

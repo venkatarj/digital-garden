@@ -28,6 +28,7 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - JWT_SECRET=${JWT_SECRET}
       - JWT_EXPIRE_MINUTES=${JWT_EXPIRE_MINUTES:-10080}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
       # Persist HF cache
       - SENTENCE_TRANSFORMERS_HOME=/app/model_cache
     volumes:

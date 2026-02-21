@@ -1,111 +1,181 @@
-import React from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { ChevronRight, ChevronLeft, Zap, CheckSquare, BarChart3 } from 'lucide-react';
 import { useJournal } from '../context/JournalContext';
 import QuickCheckIn from './QuickCheckIn';
-import HabitTracker from './HabitTracker';
+import TaskWidget from './TaskWidget';
 import InsightsSummary from './InsightsSummary';
 import CalendarPanel from './CalendarPanel';
 import axios from 'axios';
 
-const AdaptiveRightPanel = ({ optimisticDeletedIds }) => {
+const TABS = [
+    { key: 'quick', label: 'Quick', icon: Zap },
+    { key: 'tasks', label: 'Tasks', icon: CheckSquare },
+    { key: 'insights', label: 'Insights', icon: BarChart3 },
+];
+
+const AdaptiveRightPanel = () => {
+    const [isCollapsed, setIsCollapsed] = useState(false);
     const {
         isCreating,
         isEditing,
         isBrowsing,
         entries,
-        allHabits,
-        completedHabitIds,
+        tasks,
+        addTask,
+        toggleTask,
+        deleteTask,
+        updateTaskColor,
         selectedDate,
         setSelectedDate,
-        toggleHabit,
-        handleAddHabit,
-        handleDeleteHabit,
         currentFolder,
         onRefresh
     } = useJournal();
 
     const API_URL = import.meta.env.VITE_API_URL || `http://${window.location.hostname}:8000`;
 
-    // Quick add handler for QuickCheckIn
-    const handleQuickAdd = async (text) => {
-        try {
-            await axios.post(`${API_URL}/entries/`, {
-                title: 'Quick Note',
-                content: text,
-                folder: currentFolder || 'Journal',
-                mood: '😐'
-            });
-            if (onRefresh) onRefresh();
-        } catch (error) {
-            console.error('Failed to add quick note:', error);
+    // Context-suggested panel mode
+    const suggestedMode = isCreating ? 'quick' : isEditing ? 'tasks' : 'insights';
+
+    // Active tab: user-overridable, defaults to context-suggested
+    const [activeTab, setActiveTab] = useState(suggestedMode);
+    const [manualOverride, setManualOverride] = useState(false);
+    const prevSuggestedRef = useRef(suggestedMode);
+
+    // When context-suggested mode changes, follow it UNLESS user has manually overridden
+    useEffect(() => {
+        if (prevSuggestedRef.current !== suggestedMode) {
+            prevSuggestedRef.current = suggestedMode;
+            if (!manualOverride) {
+                setActiveTab(suggestedMode);
+            }
+        }
+    }, [suggestedMode, manualOverride]);
+
+    const handleTabClick = (tabKey) => {
+        setActiveTab(tabKey);
+        // If user selects the same tab that context suggests, clear the override
+        if (tabKey === suggestedMode) {
+            setManualOverride(false);
+        } else {
+            setManualOverride(true);
         }
     };
 
-    // Determine panel mode based on user context
-    const panelMode = isCreating ? 'quick' : isEditing ? 'habits' : 'insights';
-
-    const filteredEntries = entries.filter(e => !optimisticDeletedIds.includes(e.id));
+    // Collapsed view
+    if (isCollapsed) {
+        return (
+            <div style={{
+                width: '50px',
+                background: 'var(--bg-secondary)',
+                borderLeft: '1px solid var(--border-color)',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                padding: '20px 10px'
+            }}>
+                <button
+                    onClick={() => setIsCollapsed(false)}
+                    style={{
+                        background: 'transparent',
+                        border: 'none',
+                        cursor: 'pointer',
+                        color: 'var(--muted-text)',
+                        padding: '8px'
+                    }}
+                >
+                    <ChevronLeft size={20} />
+                </button>
+            </div>
+        );
+    }
 
     return (
-        <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-            <AnimatePresence mode="wait">
-                {panelMode === 'quick' && (
-                    <motion.div
-                        key="quick"
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: -10 }}
-                        transition={{ duration: 0.2 }}
-                        style={{ flex: '0 0 auto', maxHeight: '60%', overflowY: 'auto', paddingRight: '5px' }}
-                    >
-                        <div style={{ marginBottom: '20px', paddingTop: '10px' }}>
-                            <QuickCheckIn
-                                onAddEntry={handleQuickAdd}
-                                isManagingHabits={false}
-                                onToggleManage={() => {}}
-                            />
-                        </div>
-                    </motion.div>
-                )}
+        <div style={{ display: 'flex', flexDirection: 'column', height: '100%', position: 'relative' }}>
+            {/* Tab Bar */}
+            <div className="right-panel-tab-bar">
+                <div className="right-panel-tabs">
+                    {TABS.map(tab => {
+                        const Icon = tab.icon;
+                        const isActive = activeTab === tab.key;
+                        const taskCount = tab.key === 'tasks' ? tasks.filter(t => !t.completed).length : 0;
+                        return (
+                            <button
+                                key={tab.key}
+                                className={`right-panel-tab ${isActive ? 'active' : ''}`}
+                                onClick={() => handleTabClick(tab.key)}
+                                title={tab.label}
+                            >
+                                <Icon size={14} />
+                                <span>{tab.label}</span>
+                                {tab.key === 'tasks' && taskCount > 0 && (
+                                    <span className="right-panel-tab-badge">{taskCount}</span>
+                                )}
+                            </button>
+                        );
+                    })}
+                </div>
 
-                {panelMode === 'habits' && (
-                    <motion.div
-                        key="habits"
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: -10 }}
-                        transition={{ duration: 0.2 }}
-                        style={{ flex: '0 0 auto', maxHeight: '60%', overflowY: 'auto', paddingRight: '5px' }}
-                    >
-                        <div style={{ marginBottom: '20px', paddingTop: '10px' }}>
-                            <HabitTracker
-                                habits={allHabits}
-                                completedIds={completedHabitIds}
-                                onToggle={toggleHabit}
-                                onAdd={handleAddHabit}
-                                onDelete={handleDeleteHabit}
-                            />
-                        </div>
-                    </motion.div>
-                )}
+            </div>
 
-                {panelMode === 'insights' && (
-                    <motion.div
-                        key="insights"
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: -10 }}
-                        transition={{ duration: 0.2 }}
-                    >
-                        <InsightsSummary entries={filteredEntries} />
-                    </motion.div>
-                )}
-            </AnimatePresence>
+            {/* Panel Content */}
+            <div style={{ flex: 1, overflowY: 'auto', paddingRight: '5px' }}>
+                <AnimatePresence mode="wait">
+                    {activeTab === 'quick' && (
+                        <motion.div
+                            key="quick"
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -10 }}
+                            transition={{ duration: 0.2 }}
+                        >
+                            <div style={{ marginBottom: '20px', paddingTop: '10px' }}>
+                                <QuickCheckIn
+                                    isManagingHabits={false}
+                                    onToggleManage={() => { }}
+                                />
+                            </div>
+                        </motion.div>
+                    )}
+
+                    {activeTab === 'tasks' && (
+                        <motion.div
+                            key="tasks"
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -10 }}
+                            transition={{ duration: 0.2 }}
+                        >
+                            <div style={{ marginBottom: '20px', paddingTop: '10px' }}>
+                                <TaskWidget
+                                    tasks={tasks}
+                                    onToggle={toggleTask}
+                                    onDelete={deleteTask}
+                                    onAdd={addTask}
+                                    onUpdateColor={updateTaskColor}
+                                />
+                            </div>
+                        </motion.div>
+                    )}
+
+                    {activeTab === 'insights' && (
+                        <motion.div
+                            key="insights"
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -10 }}
+                            transition={{ duration: 0.2 }}
+                        >
+                            <InsightsSummary entries={entries} />
+                        </motion.div>
+                    )}
+                </AnimatePresence>
+            </div>
 
             {/* Calendar always visible at bottom */}
             <div style={{ marginTop: 'auto', paddingTop: '20px', paddingBottom: '20px', width: '100%' }}>
                 <CalendarPanel
-                    entries={filteredEntries}
+                    entries={entries}
                     selectedDate={selectedDate}
                     onDateSelect={setSelectedDate}
                 />

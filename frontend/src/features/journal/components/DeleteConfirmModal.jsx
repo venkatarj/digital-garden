@@ -2,8 +2,8 @@ import React, { useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Loader2, Trash2 } from 'lucide-react';
 
-const DeleteConfirmModal = ({ isOpen, onClose, onConfirm, entryTitle, isDeleting }) => {
-    const modalRef = useRef(null);
+const DeleteConfirmModal = ({ isOpen, onClose, onConfirm, title, message, isDeleting }) => {
+    const cancelRef = useRef(null);
 
     // Trap focus and handle Escape key
     useEffect(() => {
@@ -13,11 +13,8 @@ const DeleteConfirmModal = ({ isOpen, onClose, onConfirm, entryTitle, isDeleting
             };
             document.addEventListener('keydown', handleEscape);
 
-            // Focus on Confirm button primarily (safe default for destructive actions?)
-            // Usually safest is Cancel. But user wants "Polished delete action".
-            // Let's focus Cancel button first.
-            const cancelBtn = document.getElementById('cancel-delete-btn');
-            if (cancelBtn) cancelBtn.focus();
+            // Focus Cancel button (safe default for destructive actions)
+            setTimeout(() => cancelRef.current?.focus(), 100);
 
             return () => document.removeEventListener('keydown', handleEscape);
         }
@@ -27,7 +24,7 @@ const DeleteConfirmModal = ({ isOpen, onClose, onConfirm, entryTitle, isDeleting
     useEffect(() => {
         if (isOpen) {
             document.body.style.overflow = 'hidden';
-            return () => document.body.style.overflow = 'unset';
+            return () => (document.body.style.overflow = 'unset');
         }
     }, [isOpen]);
 
@@ -41,52 +38,137 @@ const DeleteConfirmModal = ({ isOpen, onClose, onConfirm, entryTitle, isDeleting
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
                         onClick={!isDeleting ? onClose : undefined}
-                        className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4"
+                        style={{
+                            position: 'fixed',
+                            top: 0, left: 0, right: 0, bottom: 0,
+                            background: 'rgba(0,0,0,0.45)',
+                            backdropFilter: 'blur(6px)',
+                            WebkitBackdropFilter: 'blur(6px)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            zIndex: 9999,
+                            padding: '16px'
+                        }}
                         aria-hidden="true"
                     />
 
                     {/* Modal */}
                     <motion.div
-                        ref={modalRef}
                         role="dialog"
                         aria-modal="true"
-                        aria-labelledby="modal-title"
-                        initial={{ opacity: 0, scale: 0.95, y: -20 }}
+                        aria-labelledby="delete-modal-title"
+                        initial={{ opacity: 0, scale: 0.92, y: -24 }}
                         animate={{ opacity: 1, scale: 1, y: 0 }}
-                        exit={{ opacity: 0, scale: 0.95, y: 10 }}
-                        transition={{ type: "spring", duration: 0.3, bounce: 0.2 }}
-                        className="fixed z-50 w-full max-w-md bg-white/90 dark:bg-slate-900/90 backdrop-blur-xl border border-white/20 dark:border-slate-700 rounded-2xl shadow-2xl overflow-hidden"
+                        exit={{ opacity: 0, scale: 0.92, y: 12 }}
+                        transition={{ type: 'spring', duration: 0.35, bounce: 0.18 }}
+                        style={{
+                            position: 'fixed',
+                            top: '50%',
+                            left: '50%',
+                            transform: 'translate(-50%, -50%)',
+                            zIndex: 10000,
+                            width: '100%',
+                            maxWidth: '400px',
+                            background: 'var(--bg-secondary)',
+                            border: '1px solid var(--border-color)',
+                            borderRadius: '16px',
+                            boxShadow: '0 25px 60px -12px rgba(0,0,0,0.25), 0 8px 20px -6px rgba(0,0,0,0.15)',
+                            overflow: 'hidden'
+                        }}
                     >
-                        <div className="p-6 text-center">
-                            <div className="w-12 h-12 rounded-full bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400 mx-auto mb-4 flex items-center justify-center">
-                                <Trash2 size={24} />
+                        <div style={{ padding: '28px 24px 24px', textAlign: 'center' }}>
+                            {/* Icon */}
+                            <div style={{
+                                width: '48px',
+                                height: '48px',
+                                borderRadius: '50%',
+                                background: 'rgba(239, 68, 68, 0.1)',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                margin: '0 auto 16px',
+                                color: '#ef4444'
+                            }}>
+                                <Trash2 size={22} />
                             </div>
 
-                            <h3 id="modal-title" className="text-xl font-display font-bold text-slate-800 dark:text-white mb-2">
-                                Delete Entry?
+                            {/* Title */}
+                            {/* Title */}
+                            <h3
+                                id="delete-modal-title"
+                                style={{
+                                    margin: '0 0 8px',
+                                    fontSize: '18px',
+                                    fontWeight: '700',
+                                    color: 'var(--contrast-text)',
+                                    fontFamily: 'var(--font-display), Georgia, serif'
+                                }}
+                            >
+                                {title || 'Delete Item?'}
                             </h3>
 
-                            <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">
-                                Are you sure you want to delete <span className="font-semibold text-slate-700 dark:text-slate-300">"{entryTitle || 'Untitled Entry'}"</span>? This action cannot be undone.
+                            {/* Message */}
+                            <p style={{
+                                margin: '0 0 24px',
+                                fontSize: '14px',
+                                color: 'var(--muted-text)',
+                                lineHeight: 1.5
+                            }}>
+                                {message || 'Are you sure you want to delete this item? This action cannot be undone.'}
                             </p>
 
-                            <div className="flex gap-3 justify-center">
+                            {/* Buttons */}
+                            <div style={{
+                                display: 'flex',
+                                gap: '12px',
+                                justifyContent: 'center'
+                            }}>
                                 <button
-                                    id="cancel-delete-btn"
+                                    ref={cancelRef}
                                     onClick={onClose}
                                     disabled={isDeleting}
-                                    className="px-5 py-2.5 rounded-xl text-sm font-medium bg-slate-100 hover:bg-slate-200 text-slate-600 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-slate-700 transition-colors focus:ring-2 focus:ring-slate-300 focus:outline-none disabled:opacity-50"
+                                    style={{
+                                        padding: '10px 20px',
+                                        borderRadius: '10px',
+                                        border: '1px solid var(--border-color)',
+                                        background: 'var(--bg-primary)',
+                                        color: 'var(--contrast-text)',
+                                        fontSize: '14px',
+                                        fontWeight: '500',
+                                        cursor: isDeleting ? 'not-allowed' : 'pointer',
+                                        opacity: isDeleting ? 0.5 : 1,
+                                        fontFamily: 'var(--font-sans)',
+                                        transition: 'all 0.2s ease'
+                                    }}
                                 >
                                     Cancel
                                 </button>
                                 <button
                                     onClick={onConfirm}
                                     disabled={isDeleting}
-                                    className="px-5 py-2.5 rounded-xl text-sm font-medium bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white shadow-lg shadow-red-500/30 transition-all hover:scale-[1.02] active:scale-[0.98] focus:ring-2 focus:ring-red-300 focus:outline-none disabled:opacity-70 disabled:cursor-not-allowed flex items-center gap-2"
+                                    style={{
+                                        padding: '10px 20px',
+                                        borderRadius: '10px',
+                                        border: 'none',
+                                        background: isDeleting
+                                            ? 'rgba(239, 68, 68, 0.7)'
+                                            : 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+                                        color: 'white',
+                                        fontSize: '14px',
+                                        fontWeight: '600',
+                                        cursor: isDeleting ? 'not-allowed' : 'pointer',
+                                        fontFamily: 'var(--font-sans)',
+                                        boxShadow: '0 4px 14px rgba(239, 68, 68, 0.3)',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '6px',
+                                        transition: 'all 0.2s ease'
+                                    }}
                                 >
                                     {isDeleting ? (
                                         <>
-                                            <Loader2 size={16} className="animate-spin" />
+                                            <Loader2 size={15} style={{ animation: 'spin 1s linear infinite' }} />
                                             Deleting...
                                         </>
                                     ) : (

@@ -22,6 +22,7 @@ class User(Base):
     entries = relationship("Entry", back_populates="user")
     habits = relationship("Habit", back_populates="user")
     reminders = relationship("Reminder", back_populates="user")
+    tasks = relationship("Task", back_populates="user")
 
 class Habit(Base):
     __tablename__ = "habits"
@@ -56,3 +57,15 @@ class Reminder(Base):
     user_id = Column(Integer, ForeignKey('users.id'), nullable=True)  # Nullable for migration
     
     user = relationship("User", back_populates="reminders")
+
+class Task(Base):
+    __tablename__ = "tasks"
+    id = Column(Integer, primary_key=True, index=True)
+    text = Column(String, nullable=False)
+    color = Column(String, default="green")  # green | yellow | red
+    completed = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    completed_at = Column(DateTime, nullable=True)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=True)
+
+    user = relationship("User", back_populates="tasks")

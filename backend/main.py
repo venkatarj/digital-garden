@@ -253,6 +253,26 @@ class SearchSchema(BaseModel):
 class AutoTagSchema(BaseModel):
     content: str
 
+# --- Task Schemas ---
+class TaskCreate(BaseModel):
+    text: str = Field(..., max_length=500)
+    color: str = Field(default="green")  # green | yellow | red
+
+class TaskUpdate(BaseModel):
+    text: Optional[str] = None
+    color: Optional[str] = None
+    completed: Optional[bool] = None
+
+class TaskResponse(BaseModel):
+    id: int
+    text: str
+    color: str
+    completed: bool
+    created_at: datetime
+    completed_at: Optional[datetime] = None
+    class Config:
+        orm_mode = True
+
 # --- ENDPOINTS ---
 
 # 1. Habits (Meta)
@@ -395,6 +415,71 @@ def delete_reminder(reminder_id: int, current_user: models.User = Depends(get_cu
         db.commit()
     return {"ok": True}
 
+# --- Tasks ---
+@app.get("/tasks/", response_model=List[TaskResponse])
+def read_tasks(current_user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Get all tasks for the current user, ordered by creation date."""
+    # Auto-archive: delete completed tasks older than 24h
+    cutoff = datetime.utcnow() - timedelta(hours=24)
+    db.query(models.Task).filter(
+        models.Task.user_id == current_user.id,
+        models.Task.completed == True,
+        models.Task.completed_at != None,
+        models.Task.completed_at < cutoff
+    ).delete(synchronize_session=False)
+    db.commit()
+
+    return db.query(models.Task).filter(
+        models.Task.user_id == current_user.id
+    ).order_by(models.Task.created_at).all()
+
+@app.post("/tasks/", response_model=TaskResponse)
+def create_task(task: TaskCreate, current_user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Create a new task."""
+    db_task = models.Task(
+        text=task.text,
+        color=task.color,
+        user_id=current_user.id
+    )
+    db.add(db_task)
+    db.commit()
+    db.refresh(db_task)
+    return db_task
+
+@app.patch("/tasks/{task_id}", response_model=TaskResponse)
+def update_task(task_id: int, task: TaskUpdate, current_user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Update a task (toggle completion, change text, change color)."""
+    db_task = db.query(models.Task).filter(
+        models.Task.id == task_id,
+        models.Task.user_id == current_user.id
+    ).first()
+    if not db_task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    if task.text is not None:
+        db_task.text = task.text
+    if task.color is not None:
+        db_task.color = task.color
+    if task.completed is not None:
+        db_task.completed = task.completed
+        db_task.completed_at = datetime.utcnow() if task.completed else None
+
+    db.commit()
+    db.refresh(db_task)
+    return db_task
+
+@app.delete("/tasks/{task_id}")
+def delete_task(task_id: int, current_user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Delete a task."""
+    task = db.query(models.Task).filter(
+        models.Task.id == task_id,
+        models.Task.user_id == current_user.id
+    ).first()
+    if task:
+        db.delete(task)
+        db.commit()
+    return {"ok": True}
+
 # 4. Real-time WebSocket (DISABLED)
 # @app.websocket("/ws/{client_id}")
 # async def websocket_endpoint(websocket: WebSocket, client_id: int):
@@ -487,6 +572,7 @@ def export_json(current_user: models.User = Depends(get_current_user), db: Sessi
         models.Habit.is_active == True
     ).all()
     reminders = db.query(models.Reminder).filter(models.Reminder.user_id == current_user.id).all()
+    tasks = db.query(models.Task).filter(models.Task.user_id == current_user.id).all()
 
     # Format data for export
     export_data = {
@@ -523,6 +609,17 @@ def export_json(current_user: models.User = Depends(get_current_user), db: Sessi
                 "completed": r.completed
             }
             for r in reminders
+        ],
+        "tasks": [
+            {
+                "id": t.id,
+                "text": t.text,
+                "color": t.color,
+                "completed": t.completed,
+                "created_at": t.created_at.isoformat() if t.created_at else None,
+                "completed_at": t.completed_at.isoformat() if t.completed_at else None
+            }
+            for t in tasks
         ]
     }
 

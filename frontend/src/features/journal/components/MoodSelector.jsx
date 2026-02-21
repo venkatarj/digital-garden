@@ -1,84 +1,218 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Smile, Sun, Meh, Moon, Frown } from 'lucide-react';
 
-const MoodButton = ({ mood, icon: Icon, color, selected, onClick, label }) => (
-    <motion.button
-        whileHover={{ scale: 1.1 }}
-        whileTap={{ scale: 0.95 }}
-        onClick={onClick}
-        className={`
-      relative group p-4 rounded-2xl transition-all duration-300
-      ${selected
-                ? `bg-gradient-to-br ${color} shadow-lg ring-4 ring-offset-2 ring-offset-white/80 ring-${color.split(' ')[1].replace('to-', '')}/20 transform scale-110`
-                : 'bg-white/40 hover:bg-white/60 backdrop-blur-sm border border-white/20 hover:scale-105'
-            }
-    `}
-    >
-        <div className="relative z-10">
-            <Icon
-                size={24}
-                className={`transition-colors duration-300 ${selected ? 'text-white' : 'text-gray-500 group-hover:text-gray-700'}`}
-                strokeWidth={selected ? 2.5 : 2}
-            />
-        </div>
-
-        {/* Ripple effect on click (simulated/framer) */}
-        <AnimatePresence>
-            {selected && (
-                <motion.div
-                    className="absolute inset-0 rounded-2xl bg-white/20"
-                    initial={{ scale: 0.8, opacity: 0 }}
-                    animate={{ scale: 1, opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    transition={{ duration: 0.3 }}
-                />
-            )}
-        </AnimatePresence>
-
-        {/* Tooltip */}
-        <div className="absolute -top-10 left-1/2 -translate-x-1/2 
-                    px-3 py-1 bg-gray-900 text-white text-xs rounded-lg
-                    opacity-0 group-hover:opacity-100 transition-opacity duration-200
-                    pointer-events-none whitespace-nowrap shadow-xl z-20">
-            {label}
-            <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-900"></div>
-        </div>
-    </motion.button>
-);
+const MOODS = [
+    { value: '😡', emoji: '😡', label: 'Angry', color: '#ef4444' },
+    { value: '😞', emoji: '😞', label: 'Sad', color: '#f97316' },
+    { value: '😐', emoji: '😐', label: 'Neutral', color: '#a3a3a3' },
+    { value: '🙂', emoji: '🙂', label: 'Good', color: '#84cc16' },
+    { value: '😄', emoji: '😄', label: 'Happy', color: '#22c55e' },
+];
 
 const MoodSelector = ({ selectedMood, onSelectMood, onPreview }) => {
-    const moods = [
-        { icon: Smile, value: '😄', label: 'Happy', color: 'from-amber-400 to-orange-500' }, // increased contrast
-        { icon: Sun, value: '🙂', label: 'Good', color: 'from-yellow-300 to-amber-400' },
-        { icon: Meh, value: '😐', label: 'Neutral', color: 'from-gray-300 to-gray-400' },
-        { icon: Moon, value: '😞', label: 'Sad', color: 'from-blue-300 to-blue-400' },
-        { icon: Frown, value: '😡', label: 'Angry', color: 'from-red-400 to-rose-500' },
-    ];
+    const getMoodIndex = (mood) => {
+        const idx = MOODS.findIndex(m => m.value === mood);
+        return idx >= 0 ? idx : 2;
+    };
+
+    const [sliderValue, setSliderValue] = useState(getMoodIndex(selectedMood) * 25);
+    const [isDragging, setIsDragging] = useState(false);
+    const [justSnapped, setJustSnapped] = useState(false);
+
+    useEffect(() => {
+        if (!isDragging) {
+            setSliderValue(getMoodIndex(selectedMood) * 25);
+        }
+    }, [selectedMood]);
+
+    const getCurrentMood = (value) => {
+        const index = Math.round(value / 25);
+        return MOODS[Math.min(Math.max(index, 0), 4)];
+    };
+
+    const handleSliderChange = (e) => {
+        const value = parseInt(e.target.value);
+        setSliderValue(value);
+        const mood = getCurrentMood(value);
+        if (onPreview) onPreview(mood.value);
+    };
+
+    const handleSliderRelease = () => {
+        const snappedValue = Math.round(sliderValue / 25) * 25;
+        setSliderValue(snappedValue);
+        setIsDragging(false);
+        setJustSnapped(true);
+        const mood = getCurrentMood(snappedValue);
+        onSelectMood(mood.value);
+        if (onPreview) onPreview(null);
+        setTimeout(() => setJustSnapped(false), 500);
+    };
+
+    const currentMood = getCurrentMood(sliderValue);
 
     return (
-        <div className="flex justify-center gap-4 py-6">
-            <div className="flex gap-3 p-2 bg-white/30 backdrop-blur-md rounded-3xl border border-white/40 shadow-sm">
-                {moods.map((m) => (
-                    <div
-                        key={m.value}
-                        onMouseEnter={() => onPreview && onPreview(m.value)}
-                        onMouseLeave={() => onPreview && onPreview(null)}
-                    >
-                        <MoodButton
-                            mood={m.value}
-                            icon={m.icon}
-                            color={m.color}
-                            label={m.label}
-                            selected={selectedMood === m.value}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px', width: '100%' }}>
+            {/* Slider Track Container - Frosted Glass Pill */}
+            <div style={{
+                flex: 1,
+                background: 'rgba(255,255,255,0.35)',
+                backdropFilter: 'blur(20px)',
+                WebkitBackdropFilter: 'blur(20px)',
+                borderRadius: '28px',
+                padding: '18px 24px 12px',
+                border: '1px solid rgba(255,255,255,0.5)',
+                boxShadow: '0 4px 24px rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,0.4)',
+                position: 'relative'
+            }}>
+                {/* Gradient Track */}
+                <div style={{
+                    position: 'relative',
+                    height: '6px',
+                    borderRadius: '3px',
+                    background: 'rgba(0,0,0,0.06)',
+                }}>
+                    {/* Filled gradient portion */}
+                    <div style={{
+                        position: 'absolute',
+                        left: 0,
+                        top: 0,
+                        height: '100%',
+                        width: `${sliderValue}%`,
+                        borderRadius: '3px',
+                        background: `linear-gradient(to right, #ef4444, ${currentMood.color})`,
+                        transition: isDragging ? 'none' : 'width 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)',
+                        boxShadow: `0 0 12px ${currentMood.color}50`
+                    }} />
+
+                    {/* Snap dots */}
+                    {MOODS.map((mood, i) => (
+                        <div
+                            key={mood.value}
                             onClick={() => {
-                                onSelectMood(m.value);
-                                if (onPreview) onPreview(null);
+                                setSliderValue(i * 25);
+                                onSelectMood(mood.value);
+                                setJustSnapped(true);
+                                setTimeout(() => setJustSnapped(false), 500);
+                            }}
+                            style={{
+                                position: 'absolute',
+                                left: `${i * 25}%`,
+                                top: '50%',
+                                transform: 'translate(-50%, -50%)',
+                                width: sliderValue >= i * 25 ? '8px' : '6px',
+                                height: sliderValue >= i * 25 ? '8px' : '6px',
+                                borderRadius: '50%',
+                                background: sliderValue >= i * 25 ? mood.color : 'rgba(0,0,0,0.12)',
+                                border: '2px solid rgba(255,255,255,0.9)',
+                                transition: 'all 0.3s ease',
+                                cursor: 'pointer',
+                                zIndex: 2
                             }}
                         />
-                    </div>
-                ))}
+                    ))}
+
+                    {/* Small track thumb indicator */}
+                    <motion.div
+                        animate={{ left: `${sliderValue}%` }}
+                        transition={{ duration: isDragging ? 0.02 : 0.4, ease: [0.34, 1.56, 0.64, 1] }}
+                        style={{
+                            position: 'absolute',
+                            top: '50%',
+                            transform: 'translate(-50%, -50%)',
+                            width: '14px',
+                            height: '14px',
+                            borderRadius: '50%',
+                            background: currentMood.color,
+                            border: '3px solid white',
+                            boxShadow: `0 2px 8px ${currentMood.color}60`,
+                            zIndex: 3,
+                            pointerEvents: 'none',
+                        }}
+                    />
+                </div>
+
+                {/* Invisible Range Input */}
+                <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    value={sliderValue}
+                    onChange={handleSliderChange}
+                    onMouseDown={() => setIsDragging(true)}
+                    onMouseUp={handleSliderRelease}
+                    onTouchStart={() => setIsDragging(true)}
+                    onTouchEnd={handleSliderRelease}
+                    style={{
+                        position: 'absolute',
+                        top: '10px',
+                        left: '24px',
+                        right: '24px',
+                        width: 'calc(100% - 48px)',
+                        height: '36px',
+                        opacity: 0,
+                        cursor: 'grab',
+                        zIndex: 10,
+                        margin: 0,
+                    }}
+                />
+
+                {/* Mood Label */}
+                <AnimatePresence mode="wait">
+                    <motion.div
+                        key={currentMood.label}
+                        initial={{ opacity: 0, y: 6 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -6 }}
+                        transition={{ duration: 0.15 }}
+                        style={{
+                            textAlign: 'center',
+                            fontSize: '11px',
+                            fontWeight: 600,
+                            color: currentMood.color,
+                            marginTop: '8px',
+                            letterSpacing: '0.5px',
+                            textTransform: 'uppercase',
+                        }}
+                    >
+                        {currentMood.label}
+                    </motion.div>
+                </AnimatePresence>
             </div>
+
+            {/* Emoji displayed to the RIGHT of the bar */}
+            <motion.div
+                animate={{
+                    scale: justSnapped ? [1, 1.5, 0.9, 1.1, 1] : 1,
+                    rotate: justSnapped ? [0, -12, 12, -5, 0] : 0,
+                }}
+                transition={{
+                    scale: { duration: 0.5, ease: [0.34, 1.56, 0.64, 1] },
+                    rotate: { duration: 0.5, ease: [0.34, 1.56, 0.64, 1] },
+                }}
+                style={{
+                    fontSize: '36px',
+                    filter: `drop-shadow(0 4px 10px ${currentMood.color}50)`,
+                    userSelect: 'none',
+                    flexShrink: 0,
+                    width: '44px',
+                    height: '44px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                }}
+            >
+                <AnimatePresence mode="wait">
+                    <motion.span
+                        key={currentMood.emoji}
+                        initial={{ scale: 0.5, opacity: 0, rotate: -20 }}
+                        animate={{ scale: 1, opacity: 1, rotate: 0 }}
+                        exit={{ scale: 0.5, opacity: 0, rotate: 20 }}
+                        transition={{ duration: 0.2 }}
+                    >
+                        {currentMood.emoji}
+                    </motion.span>
+                </AnimatePresence>
+            </motion.div>
         </div>
     );
 };

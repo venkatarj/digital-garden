@@ -27,10 +27,48 @@ export const JournalProvider = ({ children, entries, folders, onRefresh, initial
     const [ghostTitle, setGhostTitle] = useState('');
     const [showHelper, setShowHelper] = useState(false);
     const [showTags, setShowTags] = useState(false);
+    const [isFullscreen, setIsFullscreen] = useState(false);
 
     // Habits State
     const [allHabits, setAllHabits] = useState([]);
     const [completedHabitIds, setCompletedHabitIds] = useState([]);
+
+    // Tasks State — localStorage cache + API sync
+    const [tasks, setTasks] = useState(() => {
+        try {
+            const savedTasks = localStorage.getItem('tasks');
+            return savedTasks ? JSON.parse(savedTasks) : [];
+        } catch {
+            return [];
+        }
+    });
+
+    // Persist tasks to localStorage (acts as cache)
+    useEffect(() => {
+        localStorage.setItem('tasks', JSON.stringify(tasks));
+    }, [tasks]);
+
+    // Fetch tasks from API on mount
+    useEffect(() => {
+        fetchTasks();
+    }, []);
+
+    const fetchTasks = async () => {
+        try {
+            const res = await axios.get(`${API_URL}/tasks/`);
+            setTasks(res.data.map(t => ({
+                id: t.id,
+                text: t.text,
+                color: t.color,
+                completed: t.completed,
+                createdAt: t.created_at,
+                completedAt: t.completed_at
+            })));
+        } catch (e) {
+            // Silently fall back to localStorage cache
+            console.error("Failed to fetch tasks, using local cache");
+        }
+    };
 
     // AI/Smart Features
     const [suggestedTags, setSuggestedTags] = useState([]);
@@ -72,12 +110,24 @@ export const JournalProvider = ({ children, entries, folders, onRefresh, initial
         }
     };
 
-    // Load initial entry if provided
+    // Load initial entry if provided — compare by ID to avoid re-loading
+    // the same entry when the parent re-fetches (autosave → onRefresh → new object ref)
+    const prevInitialEntryIdRef = useRef(null);
     useEffect(() => {
-        if (initialEntry) {
-            loadEntryData(initialEntry);
+        const newId = initialEntry?.id;
+        const prevId = prevInitialEntryIdRef.current;
+
+        if (newId !== prevId) {
+            prevInitialEntryIdRef.current = newId;
+            if (initialEntry) {
+                loadEntryData(initialEntry);
+            } else if (prevId && !newId) {
+                // Entry was deselected
+                resetEditor();
+                setIsEditorFocused(false);
+            }
         }
-    }, [initialEntry]);
+    }, [initialEntry?.id]);
 
     // Sync folder from parent
     useEffect(() => {
@@ -174,11 +224,19 @@ export const JournalProvider = ({ children, entries, folders, onRefresh, initial
 
     // Actions
     const loadEntryData = (entry) => {
+        if (!entry) {
+            // Clear/reset editor
+            resetEditor();
+            setIsEditorFocused(false);
+            return;
+        }
+
         setId(entry.id);
         setTitle(entry.title);
         setContent(entry.content);
         setSelectedMood(entry.mood);
         setCurrentFolder(entry.folder);
+        setIsEditorFocused(true); // Auto-focus editor when entry loads
 
         if (entry.completed_habits) {
             setCompletedHabitIds(entry.completed_habits.map(h => h.id));
@@ -211,6 +269,9 @@ export const JournalProvider = ({ children, entries, folders, onRefresh, initial
     const saveEntry = async (silent = true) => {
         if (!content && !title) return;
 
+        // Track if this is a new entry creation so we can refresh the list
+        const isNewEntry = !id;
+
         if (!silent) {
             setIsAnalyzing(true);
             setSaveStatus('saving');
@@ -237,9 +298,14 @@ export const JournalProvider = ({ children, entries, folders, onRefresh, initial
                 setShowGrowthAnim(true);
             }
             setSaveStatus('saved');
-            onRefresh();
 
-            if (!silent) {
+            // Only refresh entry list for explicit saves, not silent autosaves.
+            // Silent autosaves calling onRefresh() caused a full re-render cascade
+            // every 2 seconds (flickering + swallowed click events).
+            // Refresh regardless of silent mode if we just created a new entry,
+            // so it appears in the sidebar immediately.
+            if (!silent || isNewEntry) {
+                onRefresh();
                 setTimeout(() => {
                     setSaveStatus('idle');
                     setIsReflecting(true);
@@ -290,12 +356,94 @@ export const JournalProvider = ({ children, entries, folders, onRefresh, initial
     };
 
     const handleDeleteHabit = async (habitId) => {
-        if (!window.confirm("Delete this habit?")) return;
+        // Trigger deletion through the context's API call
+        // For now, we'll keep this as is but without the confirm, 
+        // to be fully consistent we'd need to pipe this through the App modal.
+        // Let's just remove the confirm for now to avoid the native popup.
         try {
             await axios.delete(`${API_URL}/habits/${habitId}`);
             fetchHabits();
         } catch (e) {
             console.error(e);
+        }
+    };
+
+    // ─── Task Actions (Optimistic UI + API sync) ────────────────
+    const addTask = async (taskData) => {
+        // Optimistic: add with temp ID immediately
+        const tempId = `temp-${Date.now()}`;
+        const optimisticTask = {
+            id: tempId,
+            text: taskData.text,
+            color: taskData.color || 'green',
+            completed: false,
+            createdAt: new Date().toISOString(),
+            completedAt: null
+        };
+        setTasks(prev => [...prev, optimisticTask]);
+
+        try {
+            const res = await axios.post(`${API_URL}/tasks/`, {
+                text: taskData.text,
+                color: taskData.color || 'green'
+            });
+            // Replace temp with real server task
+            setTasks(prev => prev.map(t =>
+                t.id === tempId
+                    ? { id: res.data.id, text: res.data.text, color: res.data.color, completed: res.data.completed, createdAt: res.data.created_at, completedAt: res.data.completed_at }
+                    : t
+            ));
+        } catch (e) {
+            console.error("Failed to create task on server", e);
+            // Keep local task — it's still in localStorage
+        }
+    };
+
+    const toggleTask = async (taskId) => {
+        // Optimistic update
+        let newCompleted;
+        setTasks(prev => prev.map(task => {
+            if (task.id === taskId) {
+                newCompleted = !task.completed;
+                return {
+                    ...task,
+                    completed: newCompleted,
+                    completedAt: newCompleted ? new Date().toISOString() : null
+                };
+            }
+            return task;
+        }));
+
+        try {
+            await axios.patch(`${API_URL}/tasks/${taskId}`, { completed: newCompleted });
+        } catch (e) {
+            console.error("Failed to toggle task on server", e);
+        }
+    };
+
+    const deleteTask = async (taskId) => {
+        // Optimistic removal
+        const previousTasks = tasks;
+        setTasks(prev => prev.filter(task => task.id !== taskId));
+
+        try {
+            await axios.delete(`${API_URL}/tasks/${taskId}`);
+        } catch (e) {
+            console.error("Failed to delete task on server", e);
+            setTasks(previousTasks); // Rollback on failure
+        }
+    };
+
+    const updateTaskColor = async (taskId, color) => {
+        // Optimistic update
+        setTasks(prev => prev.map(task =>
+            task.id === taskId ? { ...task, color } : task
+        ));
+
+        try {
+            await axios.patch(`${API_URL}/tasks/${taskId}`, { color });
+        } catch (e) {
+            console.error("Failed to update task color on server", e);
         }
     };
 
@@ -337,7 +485,9 @@ export const JournalProvider = ({ children, entries, folders, onRefresh, initial
         expandedFolders, selectedDate,
         isEditorFocused, saveStatus, isTyping, isThoughtSettled,
         showGrowthAnim, ghostTitle, showHelper, showTags,
+        isFullscreen,
         allHabits, completedHabitIds,
+        tasks,
         suggestedTags, activeHint, isAnalyzing,
         activeOverlay, currentQuestion,
         isReflecting, learning, reflectionPrompt,
@@ -350,14 +500,17 @@ export const JournalProvider = ({ children, entries, folders, onRefresh, initial
 
         // Setters
         setTitle, setContent, setSelectedMood, setTags, setCurrentFolder,
-        setSelectedDate, setIsEditorFocused, setShowTags,
+        setSelectedDate, setIsEditorFocused, setShowTags, setIsFullscreen,
         setActiveHint, setActiveOverlay, setCurrentQuestion,
         setLearning, setReflectionPrompt,
 
         // Actions
         loadEntryData, resetEditor, saveEntry, deleteEntry,
         toggleFolder, toggleHabit, handleAddHabit, handleDeleteHabit,
-        handleAutoTag, handleFinishReflection, onRefresh
+        handleAutoTag, handleFinishReflection, onRefresh,
+
+        // Task Actions
+        addTask, toggleTask, deleteTask, updateTaskColor
     };
 
     return (
