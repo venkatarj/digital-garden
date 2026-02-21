@@ -1,13 +1,10 @@
-import React, { useState, useEffect } from 'react';
-import { analyzeEntry } from '../../ai/SemanticEngine';
-import DeleteConfirmModal from './components/DeleteConfirmModal';
-import ToastNotification from './components/ToastNotification';
+import React from 'react';
 import AdaptiveRightPanel from './components/AdaptiveRightPanel';
 import EditorPanel from './components/EditorPanel';
 import { JournalProvider, useJournal } from './context/JournalContext';
 
 // Main wrapper component with Context Provider
-const JournalView = ({ entries, folders, selectedEntry, activeFolder, isPrivate, setIsPrivate, onRefresh, onDelete, setAppBackground }) => {
+const JournalView = ({ entries, folders, selectedEntry, activeFolder, isPrivate, setIsPrivate, onRefresh, onDelete }) => {
     return (
         <JournalProvider
             entries={entries}
@@ -20,32 +17,18 @@ const JournalView = ({ entries, folders, selectedEntry, activeFolder, isPrivate,
                 isPrivate={isPrivate}
                 setIsPrivate={setIsPrivate}
                 onDelete={onDelete}
-                setAppBackground={setAppBackground}
             />
         </JournalProvider>
     );
 };
 
-// Content component (to be refactored in later phases)
-const JournalViewContent = ({ isPrivate, setIsPrivate, onDelete, setAppBackground }) => {
-    // Access context
-    const journal = useJournal();
-
-    // Destructure what we need from context
-    const {
-        selectedMood,
-        entries,
-        isFullscreen
-    } = journal;
+// Content component
+const JournalViewContent = ({ isPrivate, setIsPrivate, onDelete }) => {
+    const { selectedMood, isFullscreen } = useJournal();
 
     const moodThemes = {
         '😄': '#FEFCE8', '🙂': '#F0FAF0', '😐': '#F5F7F5', '😞': '#F0F7FE', '😡': '#FEF2F2',
     };
-
-    // Sync background color to parent
-    useEffect(() => {
-        setAppBackground(moodThemes[selectedMood] || '#F5F7F5');
-    }, [selectedMood, setAppBackground]);
 
     // --- RENDER ---
     return (
@@ -55,13 +38,11 @@ const JournalViewContent = ({ isPrivate, setIsPrivate, onDelete, setAppBackgroun
             }}>
 
             {/* --- EDITOR MAIN --- */}
-            <main className="editor-main">
-                <EditorPanel
-                    isPrivate={isPrivate}
-                    setIsPrivate={setIsPrivate}
-                    onDelete={onDelete}
-                />
-            </main>
+            <EditorPanel
+                isPrivate={isPrivate}
+                setIsPrivate={setIsPrivate}
+                onDelete={onDelete}
+            />
 
             {/* --- RIGHT: ADAPTIVE PANEL (Hidden in fullscreen) --- */}
             {!isFullscreen && (

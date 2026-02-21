@@ -16,7 +16,6 @@ export const UIProvider = ({ children }) => {
 
     // Panel state
     const [isLeftSidebarCollapsed, setIsLeftSidebarCollapsed] = useState(false);
-    const [isRightPanelCollapsed, setIsRightPanelCollapsed] = useState(false);
     const [isFullscreen, setIsFullscreen] = useState(false);
 
     // === CONTROLLED ACTIONS ===
@@ -68,7 +67,6 @@ export const UIProvider = ({ children }) => {
         selectedEntryId,
         searchTerm,
         isLeftSidebarCollapsed,
-        isRightPanelCollapsed,
         isFullscreen,
 
         // Actions
@@ -78,7 +76,6 @@ export const UIProvider = ({ children }) => {
         setSelectedEntryId: selectEntry,
         setSearchTerm,
         setIsLeftSidebarCollapsed,
-        setIsRightPanelCollapsed,
         setIsFullscreen,
         toggleFolder,
         resetToHome

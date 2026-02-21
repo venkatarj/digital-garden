@@ -451,10 +451,7 @@ export const JournalProvider = ({ children, entries, folders, onRefresh, initial
         if (!content || content.length < 20) return;
         setIsAnalyzing(true);
         try {
-            const token = localStorage.getItem('token');
-            const res = await axios.post(`${API_URL}/autotag/`, { content }, {
-                headers: { 'x-token': token }
-            });
+            const res = await axios.post(`${API_URL}/autotag/`, { content });
             const newTags = res.data.tags;
             if (newTags && newTags.length > 0) {
                 const currentTags = tags ? tags.split(',').map(t => t.trim()) : [];

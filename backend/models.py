@@ -27,11 +27,11 @@ class User(Base):
 class Habit(Base):
     __tablename__ = "habits"
     id = Column(Integer, primary_key=True, index=True)
-    name = Column(String) # e.g., "Run", "Code"
-    icon = Column(String, default="✅") # e.g., "🏃", "💻"
+    name = Column(String)
+    icon = Column(String, default="✅")
     is_active = Column(Boolean, default=True)
-    user_id = Column(Integer, ForeignKey('users.id'), nullable=True)  # Nullable for migration
-    
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=False)
+
     user = relationship("User", back_populates="habits")
 
 class Entry(Base):
@@ -42,9 +42,8 @@ class Entry(Base):
     folder = Column(String, default="Journal")
     mood = Column(String, default="😐")
     date = Column(Date, default=date.today, index=True)
-    user_id = Column(Integer, ForeignKey('users.id'), nullable=True)  # Nullable for migration
-    
-    # Relationships
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=False)
+
     completed_habits = relationship("Habit", secondary=entry_habits)
     user = relationship("User", back_populates="entries")
 
@@ -52,20 +51,20 @@ class Reminder(Base):
     __tablename__ = "reminders"
     id = Column(Integer, primary_key=True, index=True)
     text = Column(String)
-    date = Column(String) 
+    date = Column(String)
     completed = Column(Boolean, default=False)
-    user_id = Column(Integer, ForeignKey('users.id'), nullable=True)  # Nullable for migration
-    
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=False)
+
     user = relationship("User", back_populates="reminders")
 
 class Task(Base):
     __tablename__ = "tasks"
     id = Column(Integer, primary_key=True, index=True)
     text = Column(String, nullable=False)
-    color = Column(String, default="green")  # green | yellow | red
+    color = Column(String, default="green")
     completed = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     completed_at = Column(DateTime, nullable=True)
-    user_id = Column(Integer, ForeignKey('users.id'), nullable=True)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=False)
 
     user = relationship("User", back_populates="tasks")

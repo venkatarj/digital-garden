@@ -1,12 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronRight, ChevronLeft, Zap, CheckSquare, BarChart3 } from 'lucide-react';
+import { ChevronLeft, Zap, CheckSquare, BarChart3 } from 'lucide-react';
 import { useJournal } from '../context/JournalContext';
 import QuickCheckIn from './QuickCheckIn';
 import TaskWidget from './TaskWidget';
 import InsightsSummary from './InsightsSummary';
 import CalendarPanel from './CalendarPanel';
-import axios from 'axios';
 
 const TABS = [
     { key: 'quick', label: 'Quick', icon: Zap },
@@ -19,7 +18,6 @@ const AdaptiveRightPanel = () => {
     const {
         isCreating,
         isEditing,
-        isBrowsing,
         entries,
         tasks,
         addTask,
@@ -28,11 +26,7 @@ const AdaptiveRightPanel = () => {
         updateTaskColor,
         selectedDate,
         setSelectedDate,
-        currentFolder,
-        onRefresh
     } = useJournal();
-
-    const API_URL = import.meta.env.VITE_API_URL || `http://${window.location.hostname}:8000`;
 
     // Context-suggested panel mode
     const suggestedMode = isCreating ? 'quick' : isEditing ? 'tasks' : 'insights';
