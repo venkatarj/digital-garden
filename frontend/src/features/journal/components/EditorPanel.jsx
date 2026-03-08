@@ -21,6 +21,7 @@ const EditorPanel = ({ isPrivate, setIsPrivate, onDelete }) => {
         setActiveHint, setActiveOverlay, setCurrentQuestion,
         setLearning,
         loadEntryData, resetEditor, saveEntry,
+        handleNewNote,
         handleAutoTag, handleFinishReflection
     } = useJournal();
 
@@ -98,7 +99,7 @@ const EditorPanel = ({ isPrivate, setIsPrivate, onDelete }) => {
             <div className="top-bar-container" style={{ display: 'flex', alignItems: 'center', marginBottom: '4px', transition: 'opacity 0.5s', gap: '12px' }}>
 
                 {/* Left: +New Button */}
-                <button onClick={resetEditor} title="New Note" style={{ background: 'var(--accent-primary)', color: '#fff', border: 'none', borderRadius: '20px', padding: '6px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px', fontSize: '12px', fontWeight: 'bold', flexShrink: 0 }}>
+                <button onClick={handleNewNote} title="Save & New Note" style={{ background: 'var(--accent-primary)', color: '#fff', border: 'none', borderRadius: '20px', padding: '6px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px', fontSize: '12px', fontWeight: 'bold', flexShrink: 0 }}>
                     <Plus size={14} /> New
                 </button>
 
