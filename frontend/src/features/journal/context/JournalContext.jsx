@@ -84,6 +84,9 @@ export const JournalProvider = ({ children, entries, folders, onRefresh, initial
     const [learning, setLearning] = useState('');
     const [reflectionPrompt, setReflectionPrompt] = useState('');
 
+    // New Note Undo Toast
+    const [newNoteToast, setNewNoteToast] = useState({ isVisible: false, previousEntry: null });
+
     // Refs
     const typingTimeoutRef = useRef(null);
     const autosaveTimerRef = useRef(null);
@@ -329,6 +332,62 @@ export const JournalProvider = ({ children, entries, folders, onRefresh, initial
         }
     };
 
+    // Creates a new blank note. Saves the current note immediately (if unsaved),
+    // shows an undo toast so the user can navigate back.
+    const handleNewNote = async () => {
+        // Nothing open — just ensure the editor is blank
+        if (!content && !title) {
+            resetEditor();
+            return;
+        }
+
+        // Cancel any pending autosave so we don't race with the explicit save below
+        if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
+
+        // Snapshot current state before resetting
+        const snapshot = {
+            id,
+            title: title || 'Untitled',
+            content,
+            mood: selectedMood,
+            folder: currentFolder,
+            completed_habits: completedHabitIds.map(hid => ({ id: hid }))
+        };
+
+        // If this entry has never been saved yet, persist it now so we have an ID for undo
+        if (!id && (content || title)) {
+            try {
+                const finalContent = tags ? `${content}\n\n[Tags: ${tags}]` : content;
+                const res = await axios.post(`${API_URL}/entries/`, {
+                    title: title || 'Untitled',
+                    content: finalContent,
+                    folder: currentFolder,
+                    mood: selectedMood,
+                    completed_habit_ids: completedHabitIds
+                });
+                snapshot.id = res.data.id;
+                setSaveStatus('saved');
+                onRefresh();
+            } catch (e) {
+                console.error('Failed to save before creating new note', e);
+            }
+        }
+
+        resetEditor();
+        setNewNoteToast({ isVisible: true, previousEntry: snapshot });
+    };
+
+    // Restores the entry that was active before the user created a new note
+    const handleUndoNewNote = () => {
+        const prev = newNoteToast.previousEntry;
+        if (prev) {
+            // Prefer the server-fresh entry if it exists in the list; fall back to snapshot
+            const fullEntry = entries.find(e => e.id === prev.id);
+            loadEntryData(fullEntry || prev);
+        }
+        setNewNoteToast({ isVisible: false, previousEntry: null });
+    };
+
     const toggleFolder = (folder) => {
         if (expandedFolders.includes(folder)) {
             setExpandedFolders([]);
@@ -501,8 +560,12 @@ export const JournalProvider = ({ children, entries, folders, onRefresh, initial
         setActiveHint, setActiveOverlay, setCurrentQuestion,
         setLearning, setReflectionPrompt,
 
+        // New Note Undo Toast
+        newNoteToast, setNewNoteToast,
+
         // Actions
         loadEntryData, resetEditor, saveEntry, deleteEntry,
+        handleNewNote, handleUndoNewNote,
         toggleFolder, toggleHabit, handleAddHabit, handleDeleteHabit,
         handleAutoTag, handleFinishReflection, onRefresh,
 

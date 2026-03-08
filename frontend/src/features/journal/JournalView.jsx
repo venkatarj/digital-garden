@@ -1,6 +1,7 @@
 import React from 'react';
 import AdaptiveRightPanel from './components/AdaptiveRightPanel';
 import EditorPanel from './components/EditorPanel';
+import ToastNotification from './components/ToastNotification';
 import { JournalProvider, useJournal } from './context/JournalContext';
 
 // Main wrapper component with Context Provider
@@ -24,7 +25,7 @@ const JournalView = ({ entries, folders, selectedEntry, activeFolder, isPrivate,
 
 // Content component
 const JournalViewContent = ({ isPrivate, setIsPrivate, onDelete }) => {
-    const { selectedMood, isFullscreen } = useJournal();
+    const { selectedMood, isFullscreen, newNoteToast, setNewNoteToast, handleUndoNewNote } = useJournal();
 
     const moodThemes = {
         '😄': '#FEFCE8', '🙂': '#F0FAF0', '😐': '#F5F7F5', '😞': '#F0F7FE', '😡': '#FEF2F2',
@@ -42,6 +43,15 @@ const JournalViewContent = ({ isPrivate, setIsPrivate, onDelete }) => {
                 isPrivate={isPrivate}
                 setIsPrivate={setIsPrivate}
                 onDelete={onDelete}
+            />
+
+            {/* New Note Undo Toast */}
+            <ToastNotification
+                isVisible={newNoteToast.isVisible}
+                message="Note saved"
+                type="success"
+                onUndo={newNoteToast.previousEntry?.id ? handleUndoNewNote : null}
+                onClose={() => setNewNoteToast(prev => ({ ...prev, isVisible: false }))}
             />
 
             {/* --- RIGHT: ADAPTIVE PANEL (Hidden in fullscreen) --- */}
