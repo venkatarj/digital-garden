@@ -79,11 +79,6 @@ export const JournalProvider = ({ children, entries, folders, onRefresh, initial
     const [activeOverlay, setActiveOverlay] = useState(null);
     const [currentQuestion, setCurrentQuestion] = useState('');
 
-    // Reflection
-    const [isReflecting, setIsReflecting] = useState(false);
-    const [learning, setLearning] = useState('');
-    const [reflectionPrompt, setReflectionPrompt] = useState('');
-
     // New Note Undo Toast
     const [newNoteToast, setNewNoteToast] = useState({ isVisible: false, previousEntry: null });
 
@@ -309,13 +304,8 @@ export const JournalProvider = ({ children, entries, folders, onRefresh, initial
             // so it appears in the sidebar immediately.
             if (!silent || isNewEntry) {
                 onRefresh();
-                setTimeout(() => {
-                    setSaveStatus('idle');
-                    setIsReflecting(true);
-                }, 1200);
-            } else {
-                setTimeout(() => setSaveStatus('idle'), 2000);
             }
+            setTimeout(() => setSaveStatus('idle'), 2000);
         } catch (e) {
             console.error(e);
             setSaveStatus('error');
@@ -528,13 +518,6 @@ export const JournalProvider = ({ children, entries, folders, onRefresh, initial
         }
     };
 
-    const handleFinishReflection = async () => {
-        setIsReflecting(false);
-        setShowGrowthAnim(false);
-        resetEditor();
-        onRefresh();
-    };
-
     const value = {
         // State
         id, title, content, selectedMood, tags, currentFolder,
@@ -546,7 +529,6 @@ export const JournalProvider = ({ children, entries, folders, onRefresh, initial
         tasks,
         suggestedTags, activeHint, isAnalyzing,
         activeOverlay, currentQuestion,
-        isReflecting, learning, reflectionPrompt,
 
         // Computed
         isCreating, isEditing, isBrowsing, currentEntry,
@@ -558,7 +540,6 @@ export const JournalProvider = ({ children, entries, folders, onRefresh, initial
         setTitle, setContent, setSelectedMood, setTags, setCurrentFolder,
         setSelectedDate, setIsEditorFocused, setShowTags, setIsFullscreen,
         setActiveHint, setActiveOverlay, setCurrentQuestion,
-        setLearning, setReflectionPrompt,
 
         // New Note Undo Toast
         newNoteToast, setNewNoteToast,
@@ -567,7 +548,7 @@ export const JournalProvider = ({ children, entries, folders, onRefresh, initial
         loadEntryData, resetEditor, saveEntry, deleteEntry,
         handleNewNote, handleUndoNewNote,
         toggleFolder, toggleHabit, handleAddHabit, handleDeleteHabit,
-        handleAutoTag, handleFinishReflection, onRefresh,
+        handleAutoTag, onRefresh,
 
         // Task Actions
         addTask, toggleTask, deleteTask, updateTaskColor

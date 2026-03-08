@@ -14,15 +14,13 @@ const EditorPanel = ({ isPrivate, setIsPrivate, onDelete }) => {
         isFullscreen,
         suggestedTags, activeHint, isAnalyzing,
         activeOverlay, currentQuestion,
-        isReflecting, learning, reflectionPrompt,
         entries,
         setTitle, setContent, setSelectedMood, setTags,
         setIsEditorFocused, setShowTags, setIsFullscreen,
         setActiveHint, setActiveOverlay, setCurrentQuestion,
-        setLearning,
         loadEntryData, resetEditor, saveEntry,
         handleNewNote,
-        handleAutoTag, handleFinishReflection
+        handleAutoTag
     } = useJournal();
 
     // Deep Dive Questions
@@ -327,29 +325,6 @@ const EditorPanel = ({ isPrivate, setIsPrivate, onDelete }) => {
                 </div>
             </div>
 
-            {/* Reflection Overlay */}
-            {isReflecting && (
-                <div style={{
-                    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: 'var(--glass-bg)', backdropFilter: 'blur(5px)',
-                    display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 10, borderRadius: 'var(--radius-lg)'
-                }}>
-                    <h3 style={{ color: 'var(--accent-primary)', marginBottom: '15px' }}>Entry Saved.</h3>
-                    <p className="fade-in-up" style={{ color: 'var(--contrast-text)', marginBottom: '20px', fontSize: '20px', fontWeight: '500', maxWidth: '80%', textAlign: 'center' }}>
-                        {reflectionPrompt || "What is one thing you learned today?"}
-                    </p>
-                    <input value={learning} onChange={e => setLearning(e.target.value)} placeholder="Type your answer..."
-                        autoFocus
-                        onKeyDown={e => e.key === 'Enter' && handleFinishReflection()}
-                        style={{
-                            border: 'none', borderBottom: '2px solid var(--accent-primary)', background: 'transparent',
-                            fontSize: '16px', color: 'var(--contrast-text)', width: '60%', textAlign: 'center', outline: 'none', padding: '10px'
-                        }}
-                    />
-                    <button onClick={handleFinishReflection} style={{ marginTop: '30px', background: 'transparent', color: 'var(--muted-text)', border: 'none', cursor: 'pointer' }}>
-                        Skip / Done
-                    </button>
-                </div>
-            )}
         </main>
     );
 };
